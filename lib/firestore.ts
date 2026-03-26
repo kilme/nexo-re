@@ -2,8 +2,7 @@
 import { db } from './firebase'
 import {
   collection, doc, getDocs, getDoc,
-  query, orderBy, where, limit,
-  Timestamp, DocumentData,
+  query, orderBy, where,
 } from 'firebase/firestore'
 import type { Property, Listing } from '@/types'
 
