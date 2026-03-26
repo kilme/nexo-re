@@ -9,12 +9,13 @@ function checkApiKey(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!checkApiKey(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!checkApiKey(req)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   try {
     const body = await req.json()
     const db   = adminDb()
 
+    // Upsert por externalId si viene
     if (body.externalId) {
       const snap = await db.collection('listings')
         .where('externalId', '==', body.externalId).limit(1).get()
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
       if (!snap.empty) {
         const ref = snap.docs[0].ref
         await ref.update({ ...body, updatedAt: new Date().toISOString() })
-        return NextResponse.json({ id: ref.id, updated: true })
+        return NextResponse.json({ id: ref.id, actualizado: true })
       }
     }
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
-    return NextResponse.json({ id: ref.id, created: true }, { status: 201 })
+    return NextResponse.json({ id: ref.id, creado: true }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!checkApiKey(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!checkApiKey(req)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   const db   = adminDb()
   const snap = await db.collection('listings').where('status', '==', 'active').get()
   const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
