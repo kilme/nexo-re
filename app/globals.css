@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Dynamics / Colliers palette */
+  --dyn-blue:       #0078D4;
+  --dyn-blue-dark:  #005A9E;
+  --dyn-blue-light: #EFF6FC;
+  --col-green:      #00A550;
+  --col-gray:       #F3F2F1;
+  --col-border:     #EDEBE9;
+  --col-text:       #323130;
+  --col-muted:      #605E5C;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--col-gray);
+  color: var(--col-text);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
+/* Fluent-style scrollbar */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C8C6C4; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #A19F9D; }
