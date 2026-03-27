@@ -12,10 +12,9 @@ export interface PropertyAddress {
   lng?: number
 }
 
-export interface PropertyImage {
+export interface Imagen {
   url: string
-  category?: string
-  caption?: string
+  tipo?: string   // ej: "fachada", "lobby", "planta", "vista aérea"
 }
 
 export interface Property {
@@ -32,17 +31,13 @@ export interface Property {
   salePricePerM2?: number
   currency?: string
   description?: string
-  images?: PropertyImage[]
+  images?: Imagen[]
   coverImage?: string
   createdAt?: string
   updatedAt?: string
   externalId?: string  // ID from Dynamics
 }
 
-export interface ListingImage {
-  url: string
-  caption?: string
-}
 
 export interface Listing {
   id: string
@@ -57,7 +52,7 @@ export interface Listing {
   salePrice?: number
   currency?: string
   description?: string
-  images?: ListingImage[]
+  images?: Imagen[]
   coverImage?: string
   amenities?: string[]
   createdAt?: string

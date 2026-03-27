@@ -183,9 +183,11 @@ export default function PropertyDetailPage() {
             {images.length > 1 && (
               <div className="grid grid-cols-4 gap-1.5">
                 {images.slice(0, 8).map((img, i) => (
-                  <div key={i} className="h-16 bg-col-gray rounded-sm overflow-hidden cursor-pointer"
-                    onClick={() => setLightbox(img.url)}>
-                    <img src={img.url} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                  <div key={i} className="cursor-pointer" onClick={() => setLightbox(img.url)}>
+                    <div className="h-16 bg-col-gray rounded-sm overflow-hidden">
+                      <img src={img.url} alt={img.tipo ?? ''} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                    </div>
+                    {img.tipo && <p className="text-[9px] text-col-muted mt-0.5 truncate text-center">{img.tipo}</p>}
                   </div>
                 ))}
               </div>
