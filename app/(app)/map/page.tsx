@@ -2,7 +2,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
 import { getProperties, getListings } from '@/lib/firestore'
+import { exportSelectionXlsx, exportSelectionPdf, exportSelectionDocx } from '@/lib/exportMapSelection'
+import type { SelectionPin } from '@/lib/exportMapSelection'
 import type { Property, Listing } from '@/types'
+
+// ─── Labels & colors ──────────────────────────────────────────────────────────
 
 const PROP_LABELS: Record<string, string> = {
   office: 'Oficinas', industrial: 'Industrial', retail: 'Retail / Local',
@@ -11,133 +15,29 @@ const PROP_LABELS: Record<string, string> = {
 const OP_LABELS: Record<string, string> = {
   rent: 'Alquiler', sale: 'Venta', rent_sale: 'Alq. y Venta',
 }
+const TYPE_COLORS: Record<string, string> = {
+  office: '#0078D4', industrial: '#E36C09', land: '#7B5EA7',
+  retail: '#D4294B', business_park: '#107C10', hotel: '#C19C00',
+  mixed: '#00B7C3', other: '#767676',
+}
 const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type PinItem =
   | { kind: 'property'; data: Property }
   | { kind: 'listing';  data: Listing  }
 
-// ─── Export helpers ────────────────────────────────────────────────────────────
-async function exportXlsx(items: PinItem[], filename: string) {
-  const XLSX = await import('xlsx')
-  const rows = items.map(p => {
-    if (p.kind === 'property') {
-      const d = p.data
-      return {
-        'Tipo': 'Inmueble',
-        'Nombre': d.name,
-        'Categoría': PROP_LABELS[d.type] ?? d.type,
-        'Dirección': d.address.formattedAddress ?? `${d.address.street ?? ''}, ${d.address.city ?? ''}`,
-        'Ciudad': d.address.city ?? '',
-        'Superficie (m²)': d.totalArea,
-        'Alquiler /m²': d.rentPricePerM2 ? `${d.currency ?? 'USD'} ${fmt(d.rentPricePerM2)}` : '',
-        'Venta /m²': d.salePricePerM2 ? `${d.currency ?? 'USD'} ${fmt(d.salePricePerM2)}` : '',
-      }
-    } else {
-      const d = p.data
-      return {
-        'Tipo': 'Publicación',
-        'Nombre': d.name,
-        'Categoría': PROP_LABELS[d.propertyType] ?? d.propertyType,
-        'Dirección': d.address.formattedAddress ?? `${d.address.street ?? ''}, ${d.address.city ?? ''}`,
-        'Ciudad': d.address.city ?? '',
-        'Superficie (m²)': d.area,
-        'Alquiler': d.rentPrice ? `${d.currency ?? 'USD'} ${fmt(d.rentPrice)}` : '',
-        'Venta': d.salePrice ? `${d.currency ?? 'USD'} ${fmt(d.salePrice)}` : '',
-      }
-    }
-  })
-  const ws = XLSX.utils.json_to_sheet(rows)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Selección')
-  XLSX.writeFile(wb, `${filename}.xlsx`)
+type MapPin = PinItem & { lat: number; lng: number; key: string }
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  matchedKeys?: string[]
 }
 
-async function exportPdf(items: PinItem[], filename: string) {
-  const { default: jsPDF } = await import('jspdf')
-  const doc  = new jsPDF({ orientation: 'landscape' })
-  const blue = [0, 120, 212] as [number, number, number]
-  doc.setFillColor(...blue)
-  doc.rect(0, 0, 297, 18, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(13)
-  doc.text('Nexo.RE — Selección del mapa', 10, 12)
-  doc.setTextColor(0, 0, 0)
-  let y = 28
-  const cols = [10, 30, 80, 125, 165, 210, 255]
-  const headers = ['Tipo', 'Nombre', 'Categoría', 'Ciudad', 'Sup.', 'Alquiler', 'Venta']
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  headers.forEach((h, i) => doc.text(h, cols[i], y))
-  doc.setFont('helvetica', 'normal')
-  y += 6
-  items.forEach(p => {
-    if (y > 190) { doc.addPage(); y = 20 }
-    doc.setFontSize(7)
-    if (p.kind === 'property') {
-      const d = p.data
-      doc.text('Inmueble',                                cols[0], y)
-      doc.text(d.name.substring(0, 25),                  cols[1], y)
-      doc.text(PROP_LABELS[d.type] ?? d.type,            cols[2], y)
-      doc.text(d.address.city ?? '',                      cols[3], y)
-      doc.text(String(d.totalArea),                       cols[4], y)
-      doc.text(d.rentPricePerM2 ? fmt(d.rentPricePerM2) : '-', cols[5], y)
-      doc.text(d.salePricePerM2 ? fmt(d.salePricePerM2) : '-', cols[6], y)
-    } else {
-      const d = p.data
-      doc.text('Publicación',                             cols[0], y)
-      doc.text(d.name.substring(0, 25),                  cols[1], y)
-      doc.text(PROP_LABELS[d.propertyType] ?? d.propertyType, cols[2], y)
-      doc.text(d.address.city ?? '',                      cols[3], y)
-      doc.text(String(d.area),                            cols[4], y)
-      doc.text(d.rentPrice ? fmt(d.rentPrice) : '-',     cols[5], y)
-      doc.text(d.salePrice ? fmt(d.salePrice) : '-',     cols[6], y)
-    }
-    y += 7
-  })
-  doc.save(`${filename}.pdf`)
-}
+// ─── Polygon selector ─────────────────────────────────────────────────────────
 
-async function exportDocx(items: PinItem[], filename: string) {
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType } = await import('docx')
-  const headerRow = new TableRow({
-    children: ['Tipo','Nombre','Categoría','Ciudad','Sup.','Alquiler/m²','Venta/m²'].map(h =>
-      new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })] })
-    ),
-  })
-  const dataRows = items.map(p => {
-    const cells = p.kind === 'property'
-      ? ['Inmueble', p.data.name, PROP_LABELS[p.data.type] ?? p.data.type,
-         p.data.address.city ?? '', String(p.data.totalArea),
-         p.data.rentPricePerM2 ? fmt(p.data.rentPricePerM2) : '-',
-         p.data.salePricePerM2 ? fmt(p.data.salePricePerM2) : '-']
-      : ['Publicación', p.data.name, PROP_LABELS[p.data.propertyType] ?? p.data.propertyType,
-         p.data.address.city ?? '', String(p.data.area),
-         p.data.rentPrice ? fmt(p.data.rentPrice) : '-',
-         p.data.salePrice ? fmt(p.data.salePrice) : '-']
-    return new TableRow({
-      children: cells.map(text => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, size: 16 })] })] }))
-    })
-  })
-  const doc = new Document({
-    sections: [{
-      children: [
-        new Paragraph({ text: 'Nexo.RE — Selección del mapa', heading: HeadingLevel.HEADING_1 }),
-        new Paragraph({ text: `Total: ${items.length} registros`, spacing: { after: 300 } }),
-        new Table({ rows: [headerRow, ...dataRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
-      ],
-    }],
-  })
-  const blob = await Packer.toBlob(doc)
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `${filename}.docx`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// ─── Polygon selector ──────────────────────────────────────────────────────────
 function PolygonSelector({
   enabled,
   onSelect,
@@ -145,7 +45,7 @@ function PolygonSelector({
 }: {
   enabled: boolean
   onSelect: (keys: Set<string>) => void
-  pins: (PinItem & { lat: number; lng: number; key: string })[]
+  pins: MapPin[]
 }) {
   const map         = useMap()
   const drawingLib  = useMapsLibrary('drawing')
@@ -163,7 +63,7 @@ function PolygonSelector({
     const mgr = new drawingLib.DrawingManager({
       drawingMode: drawingLib.OverlayType.POLYGON,
       drawingControl: false,
-      polygonOptions: { fillColor: '#0078D4', fillOpacity: 0.15, strokeColor: '#0078D4', strokeWeight: 2 },
+      polygonOptions: { fillColor: '#0078D4', fillOpacity: 0.15, strokeColor: '#0078D4', strokeWeight: 2, editable: false },
     })
     mgr.setMap(map)
     managerRef.current = mgr
@@ -183,104 +83,223 @@ function PolygonSelector({
       polygonRef.current?.setMap(null)
       managerRef.current = null
     }
-  }, [map, drawingLib, geometryLib, enabled])
+  }, [map, drawingLib, geometryLib, enabled, pins, onSelect])
 
   return null
 }
 
-// ─── Info popup ────────────────────────────────────────────────────────────────
-function InfoPopup({ item, onClose }: { item: PinItem; onClose: () => void }) {
-  if (item.kind === 'property') {
-    const d = item.data
-    return (
-      <div className="absolute bottom-4 left-4 z-30 w-72 bg-white border border-col-border rounded-sm shadow-card-hover p-4">
-        <div className="flex items-start justify-between mb-2">
-          <span className="text-[10px] px-1.5 py-0.5 bg-dyn-light text-dyn rounded font-medium">Inmueble</span>
-          <button onClick={onClose} className="text-col-muted hover:text-col-text text-xs">✕</button>
-        </div>
-        <h3 className="font-semibold text-col-text text-sm mb-1">{d.name}</h3>
-        <p className="text-xs text-col-muted mb-1">{PROP_LABELS[d.type] ?? d.type}</p>
-        <p className="text-xs text-col-muted mb-3">{d.address.formattedAddress ?? `${d.address.street ?? ''}, ${d.address.city ?? ''}`}</p>
-        <div className="flex gap-3 text-xs border-t border-col-border pt-2">
-          <span className="text-col-muted">{fmt(d.totalArea)} m²</span>
-          {d.rentPricePerM2 && <span className="text-col-green font-medium">Alq. {fmt(d.rentPricePerM2)}/m²</span>}
-          {d.salePricePerM2 && <span className="text-col-text font-medium">Vta. {fmt(d.salePricePerM2)}/m²</span>}
-        </div>
-        <a href={`/properties/${d.id}`} className="mt-3 block text-center text-xs text-dyn hover:underline">Ver detalle →</a>
-      </div>
-    )
-  }
+// ─── Info popup ───────────────────────────────────────────────────────────────
+
+function InfoPopup({ item, onClose }: { item: MapPin; onClose: () => void }) {
   const d = item.data
+  const isProp = item.kind === 'property'
   return (
     <div className="absolute bottom-4 left-4 z-30 w-72 bg-white border border-col-border rounded-sm shadow-card-hover p-4">
       <div className="flex items-start justify-between mb-2">
-        <span className="text-[10px] px-1.5 py-0.5 bg-col-green/10 text-col-green rounded font-medium">Publicación</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isProp ? 'bg-dyn-light text-dyn' : 'bg-col-green/10 text-col-green'}`}>
+          {isProp ? 'Inmueble' : 'Publicación'}
+        </span>
         <button onClick={onClose} className="text-col-muted hover:text-col-text text-xs">✕</button>
       </div>
       <h3 className="font-semibold text-col-text text-sm mb-1">{d.name}</h3>
-      <p className="text-xs text-col-muted mb-1">{PROP_LABELS[d.propertyType] ?? d.propertyType} · {OP_LABELS[d.operationType] ?? d.operationType}</p>
-      <p className="text-xs text-col-muted mb-3">{d.address.formattedAddress ?? `${d.address.street ?? ''}, ${d.address.city ?? ''}`}</p>
+      <p className="text-xs text-col-muted mb-1">
+        {isProp
+          ? PROP_LABELS[(d as Property).type] ?? (d as Property).type
+          : `${PROP_LABELS[(d as Listing).propertyType] ?? (d as Listing).propertyType} · ${OP_LABELS[(d as Listing).operationType] ?? ''}`}
+      </p>
+      <p className="text-xs text-col-muted mb-3">
+        {d.address.formattedAddress ?? `${d.address.street ?? ''}, ${d.address.city ?? ''}`}
+      </p>
       <div className="flex gap-3 text-xs border-t border-col-border pt-2">
-        <span className="text-col-muted">{fmt(d.area)} m²</span>
-        {d.rentPrice && <span className="text-col-green font-medium">Alq. {fmt(d.rentPrice)}</span>}
-        {d.salePrice && <span className="text-col-text font-medium">Vta. {fmt(d.salePrice)}</span>}
+        {isProp ? (
+          <>
+            <span className="text-col-muted">{fmt((d as Property).totalArea)} m²</span>
+            {(d as Property).rentPricePerM2 && <span className="text-col-green font-medium">Alq. {fmt((d as Property).rentPricePerM2)}/m²</span>}
+            {(d as Property).salePrice && <span className="text-col-text font-medium">Vta. {fmt((d as Property).salePrice)}</span>}
+          </>
+        ) : (
+          <>
+            <span className="text-col-muted">{fmt((d as Listing).area)} m²</span>
+            {(d as Listing).rentPrice && <span className="text-col-green font-medium">Alq. {fmt((d as Listing).rentPrice)}</span>}
+            {(d as Listing).salePrice && <span className="text-col-text font-medium">Vta. {fmt((d as Listing).salePrice)}</span>}
+          </>
+        )}
       </div>
-      <a href={`/listings/${d.id}`} className="mt-3 block text-center text-xs text-dyn hover:underline">Ver detalle →</a>
+      <a href={isProp ? `/properties/${d.id}` : `/listings/${d.id}`}
+        className="mt-3 block text-center text-xs text-dyn hover:underline">Ver detalle →</a>
     </div>
   )
 }
 
-// ─── Export panel ──────────────────────────────────────────────────────────────
-function ExportPanel({ selected, pins, onClear }: {
-  selected: Set<string>
-  pins: (PinItem & { key: string })[]
+// ─── Chat panel ───────────────────────────────────────────────────────────────
+
+function ChatPanel({ allPins, onResults, onClear }: {
+  allPins: MapPin[]
+  onResults: (keys: Set<string>) => void
   onClear: () => void
 }) {
-  const [loading, setLoading] = useState('')
-  const items = pins.filter(p => selected.has(p.key))
-  const run = async (type: string) => {
-    setLoading(type)
-    const pure: PinItem[] = items.map(p => ({ kind: p.kind, data: p.data }) as PinItem)
-    if (type === 'xlsx') await exportXlsx(pure, 'seleccion-mapa')
-    if (type === 'pdf')  await exportPdf(pure, 'seleccion-mapa')
-    if (type === 'docx') await exportDocx(pure, 'seleccion-mapa')
-    setLoading('')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef  = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || loading) return
+    setInput('')
+    const history: ChatMessage[] = [...messages, { role: 'user', content: text }]
+    setMessages(history)
+    setLoading(true)
+    try {
+      const pinSummaries = allPins.map(p => ({
+        id:       p.data.id,
+        kind:     p.kind,
+        title:    p.data.name,
+        subtitle: p.data.address.formattedAddress ?? `${p.data.address.street ?? ''}, ${p.data.address.city ?? ''}`,
+        tag:      p.kind === 'property' ? (p.data as Property).type : (p.data as Listing).propertyType,
+        meta:     p.kind === 'property'
+          ? { type: (p.data as Property).type, area: (p.data as Property).totalArea, rentPricePerM2: (p.data as Property).rentPricePerM2, salePrice: (p.data as Property).salePrice, city: p.data.address.city }
+          : { type: (p.data as Listing).propertyType, operationType: (p.data as Listing).operationType, area: (p.data as Listing).area, rentPrice: (p.data as Listing).rentPrice, salePrice: (p.data as Listing).salePrice, city: p.data.address.city },
+      }))
+
+      const res  = await fetch('/api/chat/map-search', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ messages: history.map(m => ({ role: m.role, content: m.content })), pins: pinSummaries }),
+      })
+      const data = await res.json()
+      const matchedKeys: string[] = data.matchedKeys ?? []
+
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? 'No pude procesar la búsqueda.', matchedKeys }])
+
+      if (matchedKeys.length > 0) {
+        const keySet = new Set(matchedKeys.map(k => {
+          const [kind, id] = k.split('::')
+          const pin = allPins.find(p => p.kind === kind && p.data.id === id)
+          return pin?.key ?? ''
+        }).filter(Boolean))
+        onResults(keySet)
+      }
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error al conectar con el asistente. Intentá nuevamente.' }])
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const EXAMPLES = [
+    'Oficinas en Ciudad de México en alquiler',
+    'Inmuebles industriales con más de 1000 m²',
+    'Publicaciones de venta en Monterrey',
+  ]
+
   return (
-    <div className="absolute top-4 right-4 z-30 bg-white border border-col-border rounded-sm shadow-card-hover p-3 min-w-[200px]">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-col-text">{selected.size} seleccionado{selected.size !== 1 ? 's' : ''}</span>
-        <button onClick={onClear} className="text-[10px] text-col-muted hover:text-dyn">Limpiar</button>
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="p-3 border-b bg-dyn text-white flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold">Búsqueda inteligente</p>
+            <p className="text-[10px] opacity-75 mt-0.5">Describí lo que buscás en lenguaje natural</p>
+          </div>
+          {messages.length > 0 && (
+            <button onClick={() => { setMessages([]); setInput(''); onClear() }}
+              className="text-[10px] opacity-70 hover:opacity-100 px-2 py-1 rounded border border-white/30 hover:bg-white/10">
+              Limpiar
+            </button>
+          )}
+        </div>
       </div>
-      <div className="flex gap-1.5">
-        {[['xlsx','Excel'],['pdf','PDF'],['docx','Word']].map(([t, label]) => (
-          <button key={t} onClick={() => run(t)} disabled={!!loading}
-            className="flex-1 text-[11px] px-2 py-1.5 border border-col-border rounded-sm hover:bg-dyn-light hover:text-dyn transition-colors disabled:opacity-50">
-            {loading === t ? '...' : label}
-          </button>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center py-4 px-2">
+            <div className="text-2xl mb-2">🤖</div>
+            <p className="text-[11px] text-col-muted font-medium mb-3">¿Qué estás buscando?</p>
+            <div className="space-y-1.5">
+              {EXAMPLES.map(ex => (
+                <button key={ex} onClick={() => { setInput(ex); inputRef.current?.focus() }}
+                  className="w-full text-left text-[11px] bg-col-gray/50 hover:bg-dyn-light hover:text-dyn border border-col-border rounded-sm px-2.5 py-1.5 transition-colors">
+                  &ldquo;{ex}&rdquo;
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[90%] rounded-sm px-3 py-2 text-xs ${
+              msg.role === 'user'
+                ? 'bg-dyn text-white'
+                : 'bg-white border border-col-border text-col-text shadow-sm'
+            }`}>
+              <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' && msg.matchedKeys && msg.matchedKeys.length > 0 && (
+                <p className="mt-1.5 text-[10px] text-col-green font-medium">
+                  ✓ {msg.matchedKeys.length} resultado{msg.matchedKeys.length !== 1 ? 's' : ''} destacado{msg.matchedKeys.length !== 1 ? 's' : ''} en el mapa
+                </p>
+              )}
+            </div>
+          </div>
         ))}
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-col-border rounded-sm shadow-sm px-4 py-3">
+              <div className="flex items-center gap-1.5">
+                {[0, 150, 300].map(d => (
+                  <span key={d} style={{ animationDelay: `${d}ms` }}
+                    className="w-1.5 h-1.5 bg-col-muted rounded-full animate-bounce" />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="p-3 border-t bg-white flex-shrink-0">
+        <div className="flex gap-2 items-end">
+          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder="Describí lo que buscás..." rows={2}
+            className="flex-1 resize-none text-xs border border-col-border rounded-sm px-2.5 py-1.5 focus:outline-none focus:border-dyn placeholder-col-muted" />
+          <button onClick={send} disabled={!input.trim() || loading}
+            className="flex-shrink-0 w-8 h-8 bg-dyn hover:bg-dyn/90 disabled:bg-col-gray text-white rounded-sm flex items-center justify-center transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-[9px] text-col-muted mt-1 text-center">Enter para enviar · Shift+Enter para nueva línea</p>
       </div>
     </div>
   )
 }
 
-// ─── Map inner (needs map context) ────────────────────────────────────────────
-function MapInner({ pins, showProps, showListings }: {
-  pins: (PinItem & { lat: number; lng: number; key: string })[]
+// ─── Map inner ────────────────────────────────────────────────────────────────
+
+function MapInner({ pins, showProps, showListings, chatKeys }: {
+  pins: MapPin[]
   showProps: boolean
   showListings: boolean
+  chatKeys: Set<string> | null
 }) {
   const [activeKey, setActiveKey]     = useState<string | null>(null)
   const [selected, setSelected]       = useState<Set<string>>(new Set())
   const [polygonMode, setPolygonMode] = useState(false)
+  const [exporting, setExporting]     = useState('')
 
   const visiblePins = pins.filter(p =>
     (p.kind === 'property' && showProps) ||
     (p.kind === 'listing'  && showListings)
   )
 
-  const togglePin = useCallback((key: string, ctrlKey: boolean) => {
-    if (ctrlKey) {
+  const togglePin = useCallback((key: string, ctrl: boolean) => {
+    if (ctrl) {
       setSelected(prev => {
         const next = new Set(prev)
         if (next.has(key)) { next.delete(key) } else { next.add(key) }
@@ -294,6 +313,26 @@ function MapInner({ pins, showProps, showListings }: {
 
   const activeItem = activeKey ? pins.find(p => p.key === activeKey) ?? null : null
 
+  const selectionPins: SelectionPin[] = pins
+    .filter(p => selected.has(p.key))
+    .map(p => ({
+      id:       p.data.id,
+      kind:     p.kind,
+      title:    p.data.name,
+      subtitle: p.data.address.formattedAddress ?? `${p.data.address.street ?? ''}, ${p.data.address.city ?? ''}`,
+      lat:      p.lat,
+      lng:      p.lng,
+    }))
+
+  const runExport = async (type: string) => {
+    if (!selectionPins.length) return
+    setExporting(type)
+    if (type === 'xlsx') await exportSelectionXlsx(selectionPins)
+    if (type === 'pdf')  exportSelectionPdf(selectionPins)
+    if (type === 'docx') await exportSelectionDocx(selectionPins)
+    setExporting('')
+  }
+
   return (
     <>
       {/* Toolbar */}
@@ -301,56 +340,66 @@ function MapInner({ pins, showProps, showListings }: {
         <button
           onClick={() => { setPolygonMode(m => !m); setSelected(new Set()) }}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-sm transition-colors shadow-sm ${
-            polygonMode
-              ? 'bg-dyn text-white border-dyn'
-              : 'bg-white border-col-border hover:bg-col-gray'
+            polygonMode ? 'bg-dyn text-white border-dyn' : 'bg-white border-col-border hover:bg-col-gray'
           }`}>
-          ⬡ {polygonMode ? 'Dibujando…' : 'Seleccionar área'}
+          🔷 {polygonMode ? 'Dibujando…' : 'Seleccionar área'}
         </button>
         {selected.size > 0 && !polygonMode && (
           <button onClick={() => setSelected(new Set())}
             className="px-3 py-1.5 text-xs border border-col-border bg-white hover:bg-col-gray rounded-sm shadow-sm">
-            ✕ Limpiar selección
+            ✕ Limpiar
           </button>
         )}
       </div>
 
-      {/* Help text */}
-      {!polygonMode && selected.size === 0 && (
+      {/* Export panel */}
+      {selected.size > 0 && (
+        <div className="absolute top-4 right-4 z-30 bg-white border border-col-border rounded-sm shadow-card-hover p-3 min-w-[210px]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-col-text">{selected.size} seleccionado{selected.size !== 1 ? 's' : ''}</span>
+            <button onClick={() => setSelected(new Set())} className="text-[10px] text-col-muted hover:text-dyn">Limpiar</button>
+          </div>
+          <div className="flex gap-1.5">
+            {[['xlsx','Excel'],['pdf','PDF'],['docx','Word']].map(([t, label]) => (
+              <button key={t} onClick={() => runExport(t)} disabled={!!exporting}
+                className="flex-1 text-[11px] px-2 py-1.5 border border-col-border rounded-sm hover:bg-dyn-light hover:text-dyn transition-colors disabled:opacity-50">
+                {exporting === t ? '…' : label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Help */}
+      {!polygonMode && selected.size === 0 && !chatKeys && (
         <div className="absolute bottom-4 right-4 z-10 text-[10px] text-col-muted bg-white/80 px-2 py-1 rounded-sm border border-col-border">
           Ctrl+clic para selección múltiple
         </div>
       )}
 
-      <PolygonSelector
-        enabled={polygonMode}
-        pins={visiblePins}
-        onSelect={keys => { setSelected(keys); setPolygonMode(false) }}
-      />
+      <PolygonSelector enabled={polygonMode} pins={visiblePins}
+        onSelect={keys => { setSelected(keys); setPolygonMode(false) }} />
 
       {visiblePins.map(pin => {
-        const isSelected = selected.has(pin.key)
-        const isActive   = activeKey === pin.key
-        const isProp     = pin.kind === 'property'
+        const isSelected  = selected.has(pin.key)
+        const isActive    = activeKey === pin.key
+        const isChatMatch = chatKeys ? chatKeys.has(pin.key) : true
+        const propType    = pin.kind === 'property' ? (pin.data as Property).type : (pin.data as Listing).propertyType
+        const baseColor   = TYPE_COLORS[propType] ?? '#767676'
+        const bgColor     = isSelected ? '#F97316' : isActive ? '#1A1A1A' : baseColor
+        const dimmed      = chatKeys && !isChatMatch && !isSelected
+
         return (
           <AdvancedMarker
             key={pin.key}
             position={{ lat: pin.lat, lng: pin.lng }}
             onClick={(e) => togglePin(pin.key, (e.domEvent as MouseEvent).ctrlKey || (e.domEvent as MouseEvent).metaKey)}
           >
-            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold shadow transition-transform cursor-pointer ${
-              isSelected
-                ? 'bg-orange-500 text-white scale-110 ring-2 ring-orange-300'
-                : isActive
-                ? 'bg-dyn text-white scale-110'
-                : isProp
-                ? 'bg-dyn text-white'
-                : 'bg-col-green text-white'
-            }`}>
-              {isProp ? '🏢' : '📢'}
-              <span className="max-w-[80px] truncate">
-                {isProp ? (pin.data as Property).name : (pin.data as Listing).name}
-              </span>
+            <div style={{ backgroundColor: bgColor, opacity: dimmed ? 0.25 : 1 }}
+              className={`flex items-center justify-center w-9 h-9 rounded-full text-[10px] font-bold shadow-md cursor-pointer transition-transform text-white ${
+                (isSelected || isActive) ? 'scale-125 ring-2 ring-white/60' : 'hover:scale-110'
+              } ${isChatMatch && chatKeys ? 'ring-2 ring-yellow-400' : ''}`}>
+              {pin.kind === 'property' ? 'INM' : 'PUB'}
             </div>
           </AdvancedMarker>
         )
@@ -359,21 +408,20 @@ function MapInner({ pins, showProps, showListings }: {
       {activeItem && !polygonMode && selected.size === 0 && (
         <InfoPopup item={activeItem} onClose={() => setActiveKey(null)} />
       )}
-
-      {selected.size > 0 && (
-        <ExportPanel selected={selected} pins={pins} onClear={() => setSelected(new Set())} />
-      )}
     </>
   )
 }
 
-// ─── Main page ─────────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function MapPage() {
   const [properties, setProperties] = useState<Property[]>([])
   const [listings,   setListings]   = useState<Listing[]>([])
   const [loading,    setLoading]    = useState(true)
   const [showProps,  setShowProps]  = useState(true)
   const [showList,   setShowList]   = useState(true)
+  const [tab,        setTab]        = useState<'filters' | 'chat'>('filters')
+  const [chatKeys,   setChatKeys]   = useState<Set<string> | null>(null)
 
   useEffect(() => {
     Promise.all([getProperties(), getListings()]).then(([props, lists]) => {
@@ -383,7 +431,7 @@ export default function MapPage() {
     })
   }, [])
 
-  const pins: (PinItem & { lat: number; lng: number; key: string })[] = [
+  const pins: MapPin[] = [
     ...properties
       .filter(p => p.address.lat && p.address.lng)
       .map(p => ({ kind: 'property' as const, data: p, lat: p.address.lat!, lng: p.address.lng!, key: `property-${p.id}` })),
@@ -395,22 +443,59 @@ export default function MapPage() {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="flex items-center gap-4 px-6 py-2.5 bg-white border-b border-col-border flex-shrink-0">
-        <span className="text-xs font-semibold text-col-text">Mapa unificado</span>
-        <div className="flex items-center gap-3 ml-auto">
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <input type="checkbox" checked={showProps} onChange={e => setShowProps(e.target.checked)} className="accent-dyn" />
-            <span className="flex items-center gap-1">🏢 Inmuebles <span className="text-col-muted">({properties.length})</span></span>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <input type="checkbox" checked={showList} onChange={e => setShowList(e.target.checked)} className="accent-col-green" />
-            <span className="flex items-center gap-1">📢 Publicaciones <span className="text-col-muted">({listings.length})</span></span>
-          </label>
+    <div className="flex h-full overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-60 flex-shrink-0 bg-white border-r border-col-border flex flex-col">
+        {/* Tabs */}
+        <div className="flex border-b border-col-border flex-shrink-0">
+          {([['filters','Filtros'],['chat','🤖 Búsqueda IA']] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 text-xs py-2.5 font-medium transition-colors ${
+                tab === t ? 'border-b-2 border-dyn text-dyn' : 'text-col-muted hover:text-col-text'
+              }`}>
+              {label}
+            </button>
+          ))}
         </div>
-        {loading && <span className="text-xs text-col-muted animate-pulse">Cargando…</span>}
-      </div>
+
+        {tab === 'filters' ? (
+          <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+            <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide">Capas</p>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={showProps} onChange={e => setShowProps(e.target.checked)} className="accent-dyn w-3.5 h-3.5" />
+                <span className="flex items-center gap-1.5">🏢 Inmuebles <span className="text-col-muted">({properties.length})</span></span>
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={showList} onChange={e => setShowList(e.target.checked)} className="accent-col-green w-3.5 h-3.5" />
+                <span className="flex items-center gap-1.5">📢 Publicaciones <span className="text-col-muted">({listings.length})</span></span>
+              </label>
+            </div>
+
+            <div className="pt-3 border-t border-col-border">
+              <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide mb-2">Colores por tipo</p>
+              <div className="space-y-1.5">
+                {Object.entries(TYPE_COLORS).map(([type, color]) => (
+                  <div key={type} className="flex items-center gap-2 text-[11px] text-col-muted">
+                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                    {PROP_LABELS[type] ?? type}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {loading && <p className="text-xs text-col-muted animate-pulse">Cargando…</p>}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-hidden">
+            <ChatPanel
+              allPins={pins}
+              onResults={keys => setChatKeys(keys)}
+              onClear={() => setChatKeys(null)}
+            />
+          </div>
+        )}
+      </aside>
 
       {/* Map */}
       <div className="flex-1 relative min-h-0">
@@ -422,14 +507,14 @@ export default function MapPage() {
         ) : (
           <APIProvider apiKey={apiKey} libraries={['drawing', 'geometry']}>
             <Map
-              defaultCenter={{ lat: -34.6, lng: -58.4 }}
-              defaultZoom={11}
+              defaultCenter={{ lat: 19.4326, lng: -99.1332 }}
+              defaultZoom={6}
               mapId="955e6d120bfec853d9d9a92e"
               gestureHandling="greedy"
               disableDefaultUI={false}
               style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }}
             >
-              <MapInner pins={pins} showProps={showProps} showListings={showList} />
+              <MapInner pins={pins} showProps={showProps} showListings={showList} chatKeys={chatKeys} />
             </Map>
           </APIProvider>
         )}

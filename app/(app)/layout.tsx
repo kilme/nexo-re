@@ -26,7 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <div className="min-h-screen flex flex-col bg-col-gray">
+    <div className="h-screen flex flex-col bg-col-gray">
       {/* Top bar — Dynamics style */}
       <header className="h-12 bg-dyn flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-2">
