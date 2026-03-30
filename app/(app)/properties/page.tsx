@@ -10,6 +10,7 @@ const PROP_LABELS: Record<string, string> = {
   business_park: 'Centro Comercial', hotel: 'Hotel', mixed: 'Mixto', land: 'Terreno', other: 'Otro',
 }
 const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
+const fmtCoord = (n: number | null | undefined) => n != null ? n.toFixed(6) : '—'
 
 function ExportMenu({ items, filename }: { items: Property[]; filename: string }) {
   const [open, setOpen] = useState(false)
@@ -69,9 +70,32 @@ function PropertyCard({ property }: { property: Property }) {
           <span>{fmt(property.totalArea)} m²</span>
           {property.floors && <span>{property.floors} pisos</span>}
           {property.rentPricePerM2 && <span className="text-col-green font-medium">Alq. {property.currency ?? 'USD'} {fmt(property.rentPricePerM2)}/m²</span>}
-          {property.salePricePerM2 && <span className="text-col-text font-medium">Vta. {property.currency ?? 'USD'} {fmt(property.salePricePerM2)}/m²</span>}
+          {property.salePrice && <span className="text-col-text font-medium">Vta. {property.currency ?? 'USD'} {fmt(property.salePrice)}</span>}
         </div>
       </div>
+    </Link>
+  )
+}
+
+function PropertyRow({ property }: { property: Property }) {
+  const addr = property.address.formattedAddress ?? `${property.address.street ?? ''}, ${property.address.city ?? ''}`
+  return (
+    <Link href={`/properties/${property.id}`}
+      className="grid grid-cols-[2fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 text-xs border-b border-col-border hover:bg-dyn-light/40 transition-colors items-center">
+      <span className="font-medium text-col-text truncate">{property.name}</span>
+      <span className="text-col-muted truncate">{addr}</span>
+      <span className="text-col-muted tabular-nums">{fmtCoord(property.address.lat)}</span>
+      <span className="text-col-muted tabular-nums">{fmtCoord(property.address.lng)}</span>
+      <span>
+        <span className="px-1.5 py-0.5 bg-dyn-light text-dyn rounded text-[10px] font-medium">
+          {PROP_LABELS[property.type] ?? property.type}
+        </span>
+      </span>
+      <span className="text-col-muted tabular-nums">{fmt(property.totalArea)} m²</span>
+      <span className="text-right">
+        {property.rentPricePerM2 && <span className="text-col-green font-medium block">Alq. {fmt(property.rentPricePerM2)}/m²</span>}
+        {property.salePrice      && <span className="text-col-text font-medium block">Vta. {fmt(property.salePrice)}</span>}
+      </span>
     </Link>
   )
 }
@@ -82,6 +106,7 @@ export default function PropertiesPage() {
   const [search, setSearch]   = useState('')
   const [typeFilter, setType] = useState<PropertyType | ''>('')
   const [cityFilter, setCity] = useState('')
+  const [view, setView]       = useState<'grid' | 'list'>('grid')
 
   useEffect(() => {
     getProperties().then(d => { setAll(d); setLoading(false) })
@@ -139,13 +164,28 @@ export default function PropertiesPage() {
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-col-border rounded-sm focus:outline-none focus:border-dyn bg-white" />
           </div>
           <span className="text-xs text-col-muted">{filtered.length} inmueble{filtered.length !== 1 ? 's' : ''}</span>
-          <div className="ml-auto"><ExportMenu items={filtered} filename="inmuebles" /></div>
+          <div className="ml-auto flex items-center gap-2">
+            {/* View toggle */}
+            <div className="flex border border-col-border rounded-sm overflow-hidden">
+              <button onClick={() => setView('grid')}
+                className={`px-2.5 py-1.5 text-xs transition-colors ${view === 'grid' ? 'bg-dyn text-white' : 'bg-white text-col-muted hover:bg-col-gray'}`}
+                title="Vista grilla">
+                ⊞
+              </button>
+              <button onClick={() => setView('list')}
+                className={`px-2.5 py-1.5 text-xs transition-colors border-l border-col-border ${view === 'list' ? 'bg-dyn text-white' : 'bg-white text-col-muted hover:bg-col-gray'}`}
+                title="Vista lista">
+                ☰
+              </button>
+            </div>
+            <ExportMenu items={filtered} filename="inmuebles" />
+          </div>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {[...Array(8)].map((_, i) => (
                 <div key={i} className="bg-white border border-col-border rounded-sm shadow-card animate-pulse">
                   <div className="h-44 bg-col-gray rounded-t-sm" />
@@ -161,9 +201,23 @@ export default function PropertiesPage() {
               <span className="text-4xl mb-3">🏢</span>
               <p className="text-sm">{all.length === 0 ? 'No hay inmuebles cargados aún' : 'No hay resultados para los filtros aplicados'}</p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          ) : view === 'grid' ? (
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.map(p => <PropertyCard key={p.id} property={p} />)}
+            </div>
+          ) : (
+            <div>
+              {/* List header */}
+              <div className="grid grid-cols-[2fr_2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2 text-[10px] font-semibold text-col-muted uppercase tracking-wide border-b border-col-border bg-col-gray/50 sticky top-0">
+                <span>Nombre</span>
+                <span>Dirección</span>
+                <span>Latitud</span>
+                <span>Longitud</span>
+                <span>Tipo</span>
+                <span>Superficie</span>
+                <span className="text-right">Precios</span>
+              </div>
+              {filtered.map(p => <PropertyRow key={p.id} property={p} />)}
             </div>
           )}
         </div>
