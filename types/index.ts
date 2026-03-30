@@ -29,6 +29,7 @@ export interface Property {
   address: PropertyAddress
   rentPricePerM2?: number
   salePricePerM2?: number
+  salePrice?: number
   currency?: string
   description?: string
   images?: Imagen[]

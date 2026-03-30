@@ -39,7 +39,7 @@ async function exportPdf(property: Property) {
   if (property.yearBuilt) line('Año construcción:', String(property.yearBuilt))
   if (property.clase) line('Clase:', property.clase)
   if (property.rentPricePerM2) line('Precio alquiler /m²:', `${property.currency ?? 'USD'} ${fmt(property.rentPricePerM2)}`)
-  if (property.salePricePerM2) line('Precio venta /m²:', `${property.currency ?? 'USD'} ${fmt(property.salePricePerM2)}`)
+  if (property.salePrice) line('Precio venta total:', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)
   if (property.description) {
     y += 4
     doc.setFontSize(9)
@@ -66,7 +66,7 @@ async function exportXlsx(property: Property) {
     'Año construcción': property.yearBuilt ?? '',
     'Clase': property.clase ?? '',
     'Alquiler /m²': property.rentPricePerM2 ? `${property.currency ?? 'USD'} ${fmt(property.rentPricePerM2)}` : '',
-    'Venta /m²': property.salePricePerM2 ? `${property.currency ?? 'USD'} ${fmt(property.salePricePerM2)}` : '',
+    'Precio venta total': property.salePrice ? `${property.currency ?? 'USD'} ${fmt(property.salePrice)}` : '',
     'Descripción': property.description ?? '',
   }]
   const ws = XLSX.utils.json_to_sheet(rows)
@@ -96,7 +96,7 @@ async function exportDocx(property: Property) {
     ...(property.yearBuilt ? [field('Año construcción', String(property.yearBuilt))] : []),
     ...(property.clase ? [field('Clase', property.clase)] : []),
     ...(property.rentPricePerM2 ? [field('Precio alquiler /m²', `${property.currency ?? 'USD'} ${fmt(property.rentPricePerM2)}`)] : []),
-    ...(property.salePricePerM2 ? [field('Precio venta /m²', `${property.currency ?? 'USD'} ${fmt(property.salePricePerM2)}`)] : []),
+    ...(property.salePrice ? [field('Precio venta total', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)] : []),
     ...(property.description ? [
       new Paragraph({ text: '', spacing: { after: 100 } }),
       new Paragraph({ text: 'Descripción:', heading: HeadingLevel.HEADING_2 }),
@@ -238,7 +238,7 @@ export default function PropertyDetailPage() {
               )}
             </div>
 
-            {(property.rentPricePerM2 || property.salePricePerM2) && (
+            {(property.rentPricePerM2 || property.salePrice) && (
               <div className="border border-col-border rounded-sm p-3 space-y-2">
                 <p className="text-[10px] font-semibold text-col-muted uppercase">Precios</p>
                 {property.rentPricePerM2 && (
@@ -247,10 +247,10 @@ export default function PropertyDetailPage() {
                     <span className="font-semibold text-col-green">{property.currency ?? 'USD'} {fmt(property.rentPricePerM2)}</span>
                   </div>
                 )}
-                {property.salePricePerM2 && (
+                {property.salePrice && (
                   <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-col-muted">Venta por m²</span>
-                    <span className="font-semibold text-col-text">{property.currency ?? 'USD'} {fmt(property.salePricePerM2)}</span>
+                    <span className="text-sm text-col-muted">Precio venta total</span>
+                    <span className="font-semibold text-col-text">{property.currency ?? 'USD'} {fmt(property.salePrice)}</span>
                   </div>
                 )}
               </div>

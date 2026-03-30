@@ -22,7 +22,7 @@ export async function exportPropertiesXlsx(items: Property[], filename = 'inmueb
     'Pisos': p.floors ?? '',
     'Año construcción': p.yearBuilt ?? '',
     'Alquiler /m²': p.rentPricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.rentPricePerM2)}` : '',
-    'Venta /m²': p.salePricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.salePricePerM2)}` : '',
+    'Precio venta total': p.salePrice ? `${p.currency ?? 'USD'} ${fmt(p.salePrice)}` : '',
     'Clase': p.clase ?? '',
     'Estado': p.status === 'active' ? 'Activo' : 'Inactivo',
   }))
@@ -148,7 +148,7 @@ export async function exportPropertiesDocx(items: Property[], filename = 'inmueb
       p.address.city ?? '',
       String(p.totalArea),
       p.rentPricePerM2 ? fmt(p.rentPricePerM2) : '-',
-      p.salePricePerM2 ? fmt(p.salePricePerM2) : '-',
+      p.salePrice ? fmt(p.salePrice) : '-',
     ].map(text => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, size: 16 })] })] }))
   }))
 
