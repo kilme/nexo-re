@@ -424,7 +424,7 @@ export default function MapPage() {
             <Map
               defaultCenter={{ lat: -34.6, lng: -58.4 }}
               defaultZoom={11}
-              mapId="nexo-map"
+              mapId="955e6d120bfec853d9d9a92e"
               gestureHandling="greedy"
               disableDefaultUI={false}
               className="w-full h-full"
