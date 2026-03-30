@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminDb } from '@/lib/firebase-admin'
+import type { PropertyType } from '@/types'
 
 const API_KEY = process.env.API_SECRET_KEY!
 
@@ -8,12 +9,31 @@ function checkApiKey(req: NextRequest) {
   return key === API_KEY
 }
 
+const TIPO_MAP: Record<number, PropertyType> = {
+  0: 'office',
+  1: 'industrial',
+  2: 'land',
+  3: 'retail',
+  4: 'business_park',
+  5: 'hotel',
+  6: 'mixed',
+  7: 'other',
+}
+
+function resolveType(type: unknown): PropertyType {
+  if (typeof type === 'number') return TIPO_MAP[type] ?? 'other'
+  if (typeof type === 'string' && /^\d+$/.test(type)) return TIPO_MAP[parseInt(type)] ?? 'other'
+  return (type as PropertyType) ?? 'other'
+}
+
 export async function POST(req: NextRequest) {
   if (!checkApiKey(req)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   try {
     const body = await req.json()
     const db   = adminDb()
+
+    body.type = resolveType(body.type)
 
     // Upsert por externalId si viene
     if (body.externalId) {
