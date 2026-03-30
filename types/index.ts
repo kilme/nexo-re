@@ -1,4 +1,4 @@
-export type PropertyType = 'office' | 'industrial' | 'retail' | 'business_park' | 'land' | 'other'
+export type PropertyType = 'office' | 'industrial' | 'retail' | 'business_park' | 'land' | 'hotel' | 'mixed' | 'other'
 export type OperationType = 'rent' | 'sale' | 'rent_sale'
 export type PropertyStatus = 'active' | 'inactive'
 
@@ -64,9 +64,11 @@ export interface Listing {
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
   office: 'Oficinas',
   industrial: 'Industrial',
-  retail: 'Retail',
-  business_park: 'Parque Empresarial',
+  retail: 'Retail / Local',
+  business_park: 'Centro Comercial',
   land: 'Terreno',
+  hotel: 'Hotel',
+  mixed: 'Mixto',
   other: 'Otro',
 }
 

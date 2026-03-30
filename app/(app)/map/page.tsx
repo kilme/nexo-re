@@ -5,8 +5,8 @@ import { getProperties, getListings } from '@/lib/firestore'
 import type { Property, Listing } from '@/types'
 
 const PROP_LABELS: Record<string, string> = {
-  office: 'Oficinas', industrial: 'Industrial', retail: 'Retail',
-  business_park: 'Parque Empresarial', land: 'Terreno', other: 'Otro',
+  office: 'Oficinas', industrial: 'Industrial', retail: 'Retail / Local',
+  business_park: 'Centro Comercial', hotel: 'Hotel', mixed: 'Mixto', land: 'Terreno', other: 'Otro',
 }
 const OP_LABELS: Record<string, string> = {
   rent: 'Alquiler', sale: 'Venta', rent_sale: 'Alq. y Venta',
