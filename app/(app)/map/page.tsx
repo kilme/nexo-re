@@ -413,7 +413,7 @@ export default function MapPage() {
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-h-0">
         {!apiKey ? (
           <div className="flex flex-col items-center justify-center h-full text-col-muted gap-2">
             <span className="text-3xl">🗺️</span>
@@ -427,7 +427,7 @@ export default function MapPage() {
               mapId="955e6d120bfec853d9d9a92e"
               gestureHandling="greedy"
               disableDefaultUI={false}
-              className="w-full h-full"
+              style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }}
             >
               <MapInner pins={pins} showProps={showProps} showListings={showList} />
             </Map>
