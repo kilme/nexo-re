@@ -1,4 +1,4 @@
-import type { Property, Listing, PROPERTY_TYPE_LABELS, OPERATION_LABELS } from '@/types'
+import type { Property, Listing } from '@/types'
 
 const PROP_LABELS: Record<string, string> = {
   office: 'Oficinas', industrial: 'Industrial', retail: 'Retail',
@@ -133,7 +133,7 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
 
 export async function exportPropertiesDocx(items: Property[], filename = 'inmuebles') {
   const { Document, Packer, Paragraph, Table, TableRow, TableCell,
-    TextRun, HeadingLevel, WidthType, BorderStyle } = await import('docx')
+    TextRun, HeadingLevel, WidthType } = await import('docx')
 
   const headerRow = new TableRow({
     children: ['Nombre','Tipo','Ciudad','Sup. m²','Alq/m²','Vta/m²'].map(h =>

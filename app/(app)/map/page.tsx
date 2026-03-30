@@ -17,10 +17,6 @@ type PinItem =
   | { kind: 'property'; data: Property }
   | { kind: 'listing';  data: Listing  }
 
-function pinKey(p: PinItem) {
-  return `${p.kind}-${p.data.id}`
-}
-
 // ─── Export helpers ────────────────────────────────────────────────────────────
 async function exportXlsx(items: PinItem[], filename: string) {
   const XLSX = await import('xlsx')
@@ -145,12 +141,10 @@ async function exportDocx(items: PinItem[], filename: string) {
 function PolygonSelector({
   enabled,
   onSelect,
-  onDisable,
   pins,
 }: {
   enabled: boolean
   onSelect: (keys: Set<string>) => void
-  onDisable: () => void
   pins: (PinItem & { lat: number; lng: number; key: string })[]
 }) {
   const map         = useMap()
@@ -177,7 +171,6 @@ function PolygonSelector({
       polygonRef.current?.setMap(null)
       polygonRef.current = polygon
       mgr.setDrawingMode(null)
-      const path = polygon.getPath()
       const inside = new Set<string>()
       pins.forEach(p => {
         const pt = new google.maps.LatLng(p.lat, p.lng)
@@ -247,7 +240,7 @@ function ExportPanel({ selected, pins, onClear }: {
   const items = pins.filter(p => selected.has(p.key))
   const run = async (type: string) => {
     setLoading(type)
-    const pure: PinItem[] = items.map(({ key: _k, lat: _la, lng: _lo, ...rest }) => rest as PinItem)
+    const pure: PinItem[] = items.map(p => ({ kind: p.kind, data: p.data }) as PinItem)
     if (type === 'xlsx') await exportXlsx(pure, 'seleccion-mapa')
     if (type === 'pdf')  await exportPdf(pure, 'seleccion-mapa')
     if (type === 'docx') await exportDocx(pure, 'seleccion-mapa')
@@ -290,7 +283,7 @@ function MapInner({ pins, showProps, showListings }: {
     if (ctrlKey) {
       setSelected(prev => {
         const next = new Set(prev)
-        next.has(key) ? next.delete(key) : next.add(key)
+        if (next.has(key)) { next.delete(key) } else { next.add(key) }
         return next
       })
     } else {
@@ -333,7 +326,6 @@ function MapInner({ pins, showProps, showListings }: {
         enabled={polygonMode}
         pins={visiblePins}
         onSelect={keys => { setSelected(keys); setPolygonMode(false) }}
-        onDisable={() => setPolygonMode(false)}
       />
 
       {visiblePins.map(pin => {
