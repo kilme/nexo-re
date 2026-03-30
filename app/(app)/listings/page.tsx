@@ -17,7 +17,7 @@ const OP_COLORS: Record<string, string> = {
   sale: 'bg-orange-50 text-orange-600',
   rent_sale: 'bg-purple-50 text-purple-600',
 }
-const fmt = (n: number) => n.toLocaleString('es-AR')
+const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
 
 function ExportMenu({ items, filename }: { items: Listing[]; filename: string }) {
   const [open, setOpen] = useState(false)

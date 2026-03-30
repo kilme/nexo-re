@@ -9,7 +9,7 @@ const PROP_LABELS: Record<string, string> = {
   office: 'Oficinas', industrial: 'Industrial', retail: 'Retail / Local',
   business_park: 'Centro Comercial', hotel: 'Hotel', mixed: 'Mixto', land: 'Terreno', other: 'Otro',
 }
-const fmt = (n: number) => n.toLocaleString('es-AR')
+const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
 
 function ExportMenu({ items, filename }: { items: Property[]; filename: string }) {
   const [open, setOpen] = useState(false)

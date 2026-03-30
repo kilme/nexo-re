@@ -11,7 +11,7 @@ const PROP_LABELS: Record<string, string> = {
 const OP_LABELS: Record<string, string> = {
   rent: 'Alquiler', sale: 'Venta', rent_sale: 'Alq. y Venta',
 }
-const fmt = (n: number) => n.toLocaleString('es-AR')
+const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
 
 type PinItem =
   | { kind: 'property'; data: Property }
