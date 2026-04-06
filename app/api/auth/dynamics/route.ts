@@ -21,6 +21,12 @@ async function verifyHmac(secret: string, message: string, signature: string): P
   }
 }
 
+function publicBaseUrl(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https'
+  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? ''
+  return `${proto}://${host}`
+}
+
 // GET /api/auth/dynamics?userId=...&userName=...&userEmail=...&ts=...&sig=...
 export async function GET(req: NextRequest) {
   const p         = req.nextUrl.searchParams
@@ -30,12 +36,8 @@ export async function GET(req: NextRequest) {
   const ts        = p.get('ts')
   const sig       = p.get('sig')
 
-  const redirect = (path: string) => {
-    const url = req.nextUrl.clone()
-    url.pathname = path.split('?')[0]
-    url.search   = path.includes('?') ? '?' + path.split('?')[1] : ''
-    return NextResponse.redirect(url)
-  }
+  const base     = publicBaseUrl(req)
+  const redirect = (path: string) => NextResponse.redirect(`${base}${path}`)
 
   if (!userId || !userName || !ts || !sig) {
     return redirect('/login')

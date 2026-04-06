@@ -29,14 +29,21 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ embedToken })
 }
 
+function publicBaseUrl(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https'
+  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? ''
+  return `${proto}://${host}`
+}
+
 // El iframe carga /embed?token=xxx → este endpoint valida y redirige
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token')
-  if (!token) return NextResponse.redirect(new URL('/login', req.url))
+  const base  = publicBaseUrl(req)
+  if (!token) return NextResponse.redirect(`${base}/login`)
 
   try {
     const { payload } = await jwtVerify(token, SECRET)
-    const res = NextResponse.redirect(new URL('/properties', req.url))
+    const res = NextResponse.redirect(`${base}/properties`)
     // Guarda el firebase token en cookie para que el cliente lo use
     res.cookies.set('nexo-embed-token', payload.firebaseToken as string, {
       httpOnly: false, // necesita ser leído por JS en cliente
@@ -52,6 +59,6 @@ export async function GET(req: NextRequest) {
     })
     return res
   } catch {
-    return NextResponse.redirect(new URL('/login', req.url))
+    return NextResponse.redirect(`${base}/login`)
   }
 }
