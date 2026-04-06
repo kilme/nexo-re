@@ -1,5 +1,7 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
+import { signInAnonymously } from 'firebase/auth'
+import { auth } from './firebase'
 
 export interface DynamicsUser {
   name:  string
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isEmbed,      setIsEmbed]      = useState(false)
 
   useEffect(() => {
+    // Leer contexto Dynamics del cookie
     const cookie = getCookie('nexo-dynamics-user')
     if (cookie) {
       try {
@@ -32,6 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsEmbed(true)
       } catch { /* ignorar */ }
     }
+
+    // Sesión anónima para que Firestore funcione sin login
+    signInAnonymously(auth).catch(console.error)
   }, [])
 
   return (

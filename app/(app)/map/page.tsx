@@ -424,11 +424,18 @@ export default function MapPage() {
   const [chatKeys,   setChatKeys]   = useState<Set<string> | null>(null)
 
   useEffect(() => {
-    Promise.all([getProperties(), getListings()]).then(([props, lists]) => {
-      setProperties(props)
-      setListings(lists)
-      setLoading(false)
-    })
+    Promise.all([getProperties(), getListings()])
+      .then(([props, lists]) => {
+        console.log(`[Nexo] Propiedades: ${props.length} total, ${props.filter(p => p.address.lat && p.address.lng).length} con coords`)
+        console.log(`[Nexo] Publicaciones: ${lists.length} total, ${lists.filter(l => l.address.lat && l.address.lng).length} con coords`)
+        setProperties(props)
+        setListings(lists)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('[Nexo] Error cargando datos:', err)
+        setLoading(false)
+      })
   }, [])
 
   const pins: MapPin[] = [
