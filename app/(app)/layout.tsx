@@ -1,6 +1,5 @@
 'use client'
-import { useEffect } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 
@@ -11,21 +10,8 @@ const NAV = [
 ]
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout, isEmbed, dynamicsUser } = useAuth()
-  const router   = useRouter()
-  const pathname = usePathname()
-
-  useEffect(() => {
-    if (!loading && !user) router.replace('/login')
-  }, [user, loading, router])
-
-  if (loading || !user) return (
-    <div className="min-h-screen bg-col-gray flex items-center justify-center">
-      <div className="w-5 h-5 border-2 border-dyn border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-
-  const displayName = dynamicsUser?.name ?? user.email
+  const { dynamicsUser } = useAuth()
+  const pathname         = usePathname()
 
   return (
     <div className="h-screen flex flex-col bg-col-gray">
@@ -38,7 +24,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="text-white font-semibold text-sm tracking-wide">Nexo<span className="opacity-70">.RE</span></span>
         </div>
 
-        {/* Nav */}
         <nav className="flex items-center gap-1 ml-4">
           {NAV.map(n => (
             <Link key={n.href} href={n.href}
@@ -53,15 +38,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-white/70 text-xs">{displayName}</span>
-          {!isEmbed && (
-            <button onClick={() => { logout(); router.replace('/login') }}
-              className="text-white/70 hover:text-white text-xs transition-colors">
-              Salir
-            </button>
-          )}
-        </div>
+        {dynamicsUser && (
+          <div className="ml-auto">
+            <span className="text-white/70 text-xs">{dynamicsUser.name}</span>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 overflow-hidden">

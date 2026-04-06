@@ -13,9 +13,7 @@
       display: flex; align-items: center; justify-content: center;
       flex-direction: column; gap: 14px;
     }
-    .brand {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
-    }
+    .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .brand-icon {
       width: 32px; height: 32px; background: #0078d4;
       border-radius: 4px; display: flex; align-items: center; justify-content: center;
@@ -46,7 +44,6 @@
       background: #0078d4; color: white; border: none;
       border-radius: 2px; cursor: pointer;
       font-size: 13px; font-family: 'Segoe UI', sans-serif;
-      transition: background 0.15s;
     }
     .retry-btn:hover { background: #106ebe; }
   </style>
@@ -59,38 +56,20 @@
       <span class="brand-name">Nexo<em>.RE</em></span>
     </div>
     <div class="spinner"></div>
-    <span class="loader-text">Iniciando sesión con Dynamics...</span>
+    <span class="loader-text">Cargando...</span>
   </div>
 
   <div id="error">
     <span class="error-icon">⚠️</span>
     <span class="error-title">No se pudo conectar</span>
-    <span class="error-msg" id="error-msg">Ocurrió un error al iniciar sesión automáticamente.</span>
+    <span class="error-msg" id="error-msg">Ocurrió un error al cargar el portal.</span>
     <button class="retry-btn" onclick="init()">Reintentar</button>
   </div>
 
   <iframe id="portal" title="Nexo.RE" allow="clipboard-write; fullscreen"></iframe>
 
   <script>
-    // ─── Configuración ────────────────────────────────────────────────────────
-    // TODO: Reemplazar PORTAL_URL con la URL real del portal desplegado.
-    // TODO: Reemplazar EMBED_SECRET con el valor de DYNAMICS_EMBED_SECRET del servidor.
-    const PORTAL_URL   = 'https://nexo-re--captura-aa00a.us-central1.hosted.app';
-    const EMBED_SECRET = 'nexo-dyn-embed-secret-xP3kR7mV2nT5wQ9';
-    // ─────────────────────────────────────────────────────────────────────────
-
-    async function hmacSign(secret, message) {
-      const enc = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        'raw', enc.encode(secret),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false, ['sign']
-      );
-      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
-      // Base64url encoding
-      return btoa(String.fromCharCode(...new Uint8Array(sig)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    }
+    const PORTAL_URL = 'https://nexo-re--captura-aa00a.us-central1.hosted.app';
 
     function showError(msg) {
       document.getElementById('loader').style.display = 'none';
@@ -99,7 +78,7 @@
       document.getElementById('error-msg').textContent = msg;
     }
 
-    async function init() {
+    function init() {
       document.getElementById('error').style.display  = 'none';
       document.getElementById('portal').style.display = 'none';
       document.getElementById('loader').style.display = 'flex';
@@ -108,39 +87,25 @@
         let userId = '', userName = '', userEmail = '';
 
         if (typeof Xrm !== 'undefined') {
-          // ── Contexto real de Dynamics 365 ───────────────────────────────────
-          const ctx  = Xrm.Utility.getGlobalContext();
-          userId     = ctx.getUserId().replace(/[{}]/g, '').toLowerCase();
-          userName   = ctx.getUserName();
-          // Dynamics no expone el email directamente; usamos el nombre de usuario
-          // como identificador secundario (se puede ajustar si hay un campo custom).
-          userEmail  = userName;
+          const ctx = Xrm.Utility.getGlobalContext();
+          userId    = ctx.getUserId().replace(/[{}]/g, '').toLowerCase();
+          userName  = ctx.getUserName();
+          userEmail = userName;
         } else {
-          // ── Modo desarrollo: leer de query params ────────────────────────────
+          // Modo desarrollo: leer de query params
           const p   = new URLSearchParams(window.location.search);
-          userId    = p.get('userId')    || 'dev-00000000-0000-0000-0000-000000000001';
+          userId    = p.get('userId')    || 'dev-user';
           userName  = p.get('userName')  || 'Dev User';
-          userEmail = p.get('userEmail') || 'dev@test.com';
-          console.warn('[NexoRE] Xrm no disponible — usando parámetros de desarrollo.');
+          userEmail = p.get('userEmail') || '';
         }
-
-        if (!userId || !userName) {
-          showError('No se pudo obtener el usuario de Dynamics. Contacte al administrador.');
-          return;
-        }
-
-        const ts  = Date.now().toString();
-        const sig = await hmacSign(EMBED_SECRET, `${userId}:${userName}:${ts}`);
 
         const url = new URL('/api/auth/dynamics', PORTAL_URL);
         url.searchParams.set('userId',    userId);
         url.searchParams.set('userName',  userName);
         url.searchParams.set('userEmail', userEmail);
-        url.searchParams.set('ts',        ts);
-        url.searchParams.set('sig',       sig);
 
-        const iframe  = document.getElementById('portal');
-        let   loaded  = false;
+        const iframe = document.getElementById('portal');
+        let   loaded = false;
 
         iframe.onload = () => {
           if (loaded) return;
@@ -149,7 +114,6 @@
           iframe.style.display = 'block';
         };
 
-        // Timeout de seguridad: si no carga en 15 s mostrar error
         setTimeout(() => {
           if (!loaded) showError('El portal tardó demasiado en responder. Verifique su conexión.');
         }, 15000);
@@ -157,7 +121,7 @@
         iframe.src = url.toString();
 
       } catch (e) {
-        showError('Error inesperado: ' + (e.message || e));
+        showError('Error: ' + (e.message || e));
       }
     }
 
