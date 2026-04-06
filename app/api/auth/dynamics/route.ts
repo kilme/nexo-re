@@ -30,20 +30,27 @@ export async function GET(req: NextRequest) {
   const ts        = p.get('ts')
   const sig       = p.get('sig')
 
+  const redirect = (path: string) => {
+    const url = req.nextUrl.clone()
+    url.pathname = path.split('?')[0]
+    url.search   = path.includes('?') ? '?' + path.split('?')[1] : ''
+    return NextResponse.redirect(url)
+  }
+
   if (!userId || !userName || !ts || !sig) {
-    return NextResponse.redirect(new URL('/login', req.url))
+    return redirect('/login')
   }
 
   // Validar ventana de tiempo
   const age = Date.now() - parseInt(ts, 10)
   if (age < 0 || age > WINDOW_MS) {
-    return NextResponse.redirect(new URL('/login?error=expired', req.url))
+    return redirect('/login?error=expired')
   }
 
   // Validar HMAC
   const valid = await verifyHmac(EMBED_SECRET, `${userId}:${userName}:${ts}`, sig)
   if (!valid) {
-    return NextResponse.redirect(new URL('/login?error=invalid', req.url))
+    return redirect('/login?error=invalid')
   }
 
   // Crear Firebase custom token para el usuario de Dynamics
@@ -66,10 +73,12 @@ export async function GET(req: NextRequest) {
     path:      '/',
   }
 
-  const res = NextResponse.redirect(new URL('/properties', req.url))
-  res.cookies.set('nexo-embed-token',    firebaseToken, cookieOpts)
-  res.cookies.set('nexo-dynamics-user',  JSON.stringify({ name: userName, guid: userId, email: userEmail }), cookieOpts)
-  res.cookies.set('nexo-session', 'embed', { ...cookieOpts, httpOnly: true })
-
+  const res = redirect('/properties')
+  // Re-set cookies sobre el response de redirect ya creado
+  ;[
+    ['nexo-embed-token',   firebaseToken,                                              cookieOpts],
+    ['nexo-dynamics-user', JSON.stringify({ name: userName, guid: userId, email: userEmail }), cookieOpts],
+    ['nexo-session',       'embed',                                                    { ...cookieOpts, httpOnly: true }],
+  ].forEach(([name, value, opts]) => res.cookies.set(name as string, value as string, opts as Parameters<typeof res.cookies.set>[2]))
   return res
 }
