@@ -11,7 +11,7 @@ const NAV = [
 ]
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, isEmbed, dynamicsUser } = useAuth()
   const router   = useRouter()
   const pathname = usePathname()
 
@@ -24,6 +24,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="w-5 h-5 border-2 border-dyn border-t-transparent rounded-full animate-spin" />
     </div>
   )
+
+  const displayName = dynamicsUser?.name ?? user.email
 
   return (
     <div className="h-screen flex flex-col bg-col-gray">
@@ -52,11 +54,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-white/70 text-xs">{user.email}</span>
-          <button onClick={() => { logout(); router.replace('/login') }}
-            className="text-white/70 hover:text-white text-xs transition-colors">
-            Salir
-          </button>
+          <span className="text-white/70 text-xs">{displayName}</span>
+          {!isEmbed && (
+            <button onClick={() => { logout(); router.replace('/login') }}
+              className="text-white/70 hover:text-white text-xs transition-colors">
+              Salir
+            </button>
+          )}
         </div>
       </header>
 
