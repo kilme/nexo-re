@@ -1,5 +1,7 @@
 import type { Property, Listing } from '@/types'
 
+// ─── Labels ───────────────────────────────────────────────────────────────────
+
 const PROP_LABELS: Record<string, string> = {
   office: 'Oficinas', industrial: 'Industrial', retail: 'Retail / Local',
   business_park: 'Centro Comercial', hotel: 'Hotel', mixed: 'Mixto', land: 'Terreno', other: 'Otro',
@@ -7,27 +9,63 @@ const PROP_LABELS: Record<string, string> = {
 const OP_LABELS: Record<string, string> = {
   rent: 'Alquiler', sale: 'Venta', rent_sale: 'Alquiler y Venta',
 }
-const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
+const fmt  = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
+const BLUE: [number, number, number] = [0, 120, 212]
+const BLUE_HEX = '0078D4'
+const today = () => new Date().toLocaleDateString('es-AR')
+
+// ─── Image utilities ──────────────────────────────────────────────────────────
+
+async function fetchBase64(url: string): Promise<string | null> {
+  try {
+    const res  = await fetch(url)
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const r = new FileReader()
+      r.onload  = () => resolve(r.result as string)
+      r.onerror = reject
+      r.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
+
+async function fetchBuffer(url: string): Promise<ArrayBuffer | null> {
+  try { return await (await fetch(url)).arrayBuffer() }
+  catch { return null }
+}
+
+function imgType(url: string): 'jpg' | 'png' | 'gif' | 'bmp' {
+  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
+  if (ext === 'png') return 'png'
+  if (ext === 'gif') return 'gif'
+  if (ext === 'bmp') return 'bmp'
+  return 'jpg'
+}
 
 // ─── Excel ────────────────────────────────────────────────────────────────────
 
 export async function exportPropertiesXlsx(items: Property[], filename = 'inmuebles') {
   const XLSX = await import('xlsx')
   const rows = items.map(p => ({
-    'Nombre': p.name,
-    'Tipo': PROP_LABELS[p.type] ?? p.type,
-    'Dirección': p.address.formattedAddress ?? `${p.address.street}, ${p.address.city}`,
-    'Ciudad': p.address.city ?? '',
-    'Superficie (m²)': p.totalArea,
-    'Pisos': p.floors ?? '',
-    'Año construcción': p.yearBuilt ?? '',
-    'Alquiler /m²': p.rentPricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.rentPricePerM2)}` : '',
+    'Nombre':              p.name,
+    'Tipo':                PROP_LABELS[p.type] ?? p.type,
+    'Dirección':           p.address.formattedAddress ?? `${p.address.street ?? ''}, ${p.address.city ?? ''}`,
+    'Ciudad':              p.address.city ?? '',
+    'Superficie (m²)':    p.totalArea,
+    'Pisos':               p.floors ?? '',
+    'Año construcción':   p.yearBuilt ?? '',
+    'Clase':               p.clase ?? '',
+    'Alquiler /m²':       p.rentPricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.rentPricePerM2)}` : '',
     'Precio venta total': p.salePrice ? `${p.currency ?? 'USD'} ${fmt(p.salePrice)}` : '',
-    'Clase': p.clase ?? '',
-    'Estado': p.status === 'active' ? 'Activo' : 'Inactivo',
+    'Estado':              p.status === 'active' ? 'Activo' : 'Inactivo',
+    'Portada (URL)':       p.coverImage ?? '',
   }))
-  const ws  = XLSX.utils.json_to_sheet(rows)
-  const wb  = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(rows)
+  ws['!cols'] = [
+    {wch:40},{wch:18},{wch:40},{wch:18},{wch:14},{wch:8},{wch:12},{wch:8},
+    {wch:14},{wch:18},{wch:10},{wch:60},
+  ]
+  const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Inmuebles')
   XLSX.writeFile(wb, `${filename}.xlsx`)
 }
@@ -35,19 +73,23 @@ export async function exportPropertiesXlsx(items: Property[], filename = 'inmueb
 export async function exportListingsXlsx(items: Listing[], filename = 'publicaciones') {
   const XLSX = await import('xlsx')
   const rows = items.map(l => ({
-    'Nombre': l.name,
-    'Tipo': PROP_LABELS[l.propertyType] ?? l.propertyType,
-    'Operación': OP_LABELS[l.operationType] ?? l.operationType,
-    'Dirección': l.address.formattedAddress ?? `${l.address.street}, ${l.address.city}`,
-    'Ciudad': l.address.city ?? '',
+    'Nombre':          l.name,
+    'Tipo':            PROP_LABELS[l.propertyType] ?? l.propertyType,
+    'Operación':      OP_LABELS[l.operationType] ?? l.operationType,
+    'Dirección':       l.address.formattedAddress ?? `${l.address.street ?? ''}, ${l.address.city ?? ''}`,
+    'Ciudad':          l.address.city ?? '',
     'Superficie (m²)': l.area,
-    'Piso': l.floor ?? '',
-    'Alquiler': l.rentPrice ? `${l.currency ?? 'USD'} ${fmt(l.rentPrice)}` : '',
-    'Venta': l.salePrice ? `${l.currency ?? 'USD'} ${fmt(l.salePrice)}` : '',
-    'Estado': l.status === 'active' ? 'Activo' : 'Inactivo',
+    'Piso':            l.floor ?? '',
+    'Alquiler':        l.rentPrice ? `${l.currency ?? 'USD'} ${fmt(l.rentPrice)}` : '',
+    'Venta':           l.salePrice ? `${l.currency ?? 'USD'} ${fmt(l.salePrice)}` : '',
+    'Estado':          l.status === 'active' ? 'Activo' : 'Inactivo',
+    'Portada (URL)':   l.coverImage ?? '',
   }))
-  const ws  = XLSX.utils.json_to_sheet(rows)
-  const wb  = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(rows)
+  ws['!cols'] = [
+    {wch:40},{wch:18},{wch:14},{wch:40},{wch:18},{wch:14},{wch:8},{wch:16},{wch:16},{wch:10},{wch:60},
+  ]
+  const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Publicaciones')
   XLSX.writeFile(wb, `${filename}.xlsx`)
 }
@@ -55,75 +97,132 @@ export async function exportListingsXlsx(items: Listing[], filename = 'publicaci
 // ─── PDF ──────────────────────────────────────────────────────────────────────
 
 export async function exportPropertiesPdf(items: Property[], filename = 'inmuebles') {
-  const { default: jsPDF } = await import('jspdf')
-  const doc  = new jsPDF({ orientation: 'landscape' })
-  const blue = [0, 120, 212] as [number, number, number]
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
 
-  doc.setFillColor(...blue)
-  doc.rect(0, 0, 297, 18, 'F')
+  // Prefetch cover images in parallel
+  const images = await Promise.all(
+    items.map(p => p.coverImage ? fetchBase64(p.coverImage) : Promise.resolve(null))
+  )
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+  // Header
+  doc.setFillColor(...BLUE)
+  doc.rect(0, 0, 297, 16, 'F')
   doc.setTextColor(255, 255, 255)
-  doc.setFontSize(13)
-  doc.text('Nexo.RE — Inmuebles', 10, 12)
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Nexo.RE — Inmuebles', 10, 11)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`${items.length} registros · ${today()}`, 240, 11)
   doc.setTextColor(0, 0, 0)
 
-  let y = 28
-  const cols = [10, 80, 130, 165, 200, 235]
-  const headers = ['Nombre', 'Tipo', 'Ciudad', 'Sup. m²', 'Alq/m²', 'Vta/m²']
-
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  headers.forEach((h, i) => doc.text(h, cols[i], y))
-  doc.setFont('helvetica', 'normal')
-  y += 6
-
-  items.forEach(p => {
-    if (y > 190) { doc.addPage(); y = 20 }
-    doc.setFontSize(7)
-    doc.text(p.name.substring(0, 30), cols[0], y)
-    doc.text(PROP_LABELS[p.type] ?? p.type, cols[1], y)
-    doc.text(p.address.city ?? '', cols[2], y)
-    doc.text(String(p.totalArea), cols[3], y)
-    doc.text(p.rentPricePerM2 ? fmt(p.rentPricePerM2) : '-', cols[4], y)
-    doc.text(p.salePricePerM2 ? fmt(p.salePricePerM2) : '-', cols[5], y)
-    y += 7
+  autoTable(doc, {
+    startY: 20,
+    head: [['', 'Nombre', 'Tipo', 'Ciudad', 'Sup. m²', 'Alq/m²', 'Venta total', 'Clase']],
+    body: items.map(p => [
+      '',
+      p.name,
+      PROP_LABELS[p.type] ?? p.type,
+      p.address.city ?? '',
+      fmt(p.totalArea),
+      p.rentPricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.rentPricePerM2)}` : '—',
+      p.salePrice      ? `${p.currency ?? 'USD'} ${fmt(p.salePrice)}`      : '—',
+      p.clase ?? '',
+    ]),
+    headStyles:          { fillColor: BLUE, textColor: 255, fontStyle: 'bold', fontSize: 8 },
+    bodyStyles:          { fontSize: 7, textColor: [30, 30, 30], minCellHeight: 22, valign: 'middle' },
+    alternateRowStyles:  { fillColor: [229, 241, 251] },
+    columnStyles: {
+      0: { cellWidth: 32, cellPadding: 1 },
+      1: { cellWidth: 60 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 20, halign: 'right' },
+      5: { cellWidth: 28, halign: 'right' },
+      6: { cellWidth: 32, halign: 'right' },
+      7: { cellWidth: 18 },
+    },
+    margin: { left: 8, right: 8 },
+    didDrawCell: (data) => {
+      if (data.column.index === 0 && data.row.section === 'body') {
+        const b64 = images[data.row.index]
+        if (b64) {
+          try {
+            doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20)
+          } catch { /* skip si la imagen falla */ }
+        }
+      }
+    },
   })
 
   doc.save(`${filename}.pdf`)
 }
 
 export async function exportListingsPdf(items: Listing[], filename = 'publicaciones') {
-  const { default: jsPDF } = await import('jspdf')
-  const doc  = new jsPDF({ orientation: 'landscape' })
-  const blue = [0, 120, 212] as [number, number, number]
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
 
-  doc.setFillColor(...blue)
-  doc.rect(0, 0, 297, 18, 'F')
+  const images = await Promise.all(
+    items.map(l => l.coverImage ? fetchBase64(l.coverImage) : Promise.resolve(null))
+  )
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+  doc.setFillColor(...BLUE)
+  doc.rect(0, 0, 297, 16, 'F')
   doc.setTextColor(255, 255, 255)
-  doc.setFontSize(13)
-  doc.text('Nexo.RE — Publicaciones', 10, 12)
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Nexo.RE — Publicaciones', 10, 11)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`${items.length} registros · ${today()}`, 240, 11)
   doc.setTextColor(0, 0, 0)
 
-  let y = 28
-  const cols = [10, 75, 120, 155, 185, 220, 255]
-  const headers = ['Nombre', 'Tipo', 'Operación', 'Ciudad', 'Sup.', 'Alquiler', 'Venta']
-
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  headers.forEach((h, i) => doc.text(h, cols[i], y))
-  doc.setFont('helvetica', 'normal')
-  y += 6
-
-  items.forEach(l => {
-    if (y > 190) { doc.addPage(); y = 20 }
-    doc.setFontSize(7)
-    doc.text(l.name.substring(0, 28), cols[0], y)
-    doc.text(PROP_LABELS[l.propertyType] ?? l.propertyType, cols[1], y)
-    doc.text(OP_LABELS[l.operationType] ?? l.operationType, cols[2], y)
-    doc.text(l.address.city ?? '', cols[3], y)
-    doc.text(String(l.area), cols[4], y)
-    doc.text(l.rentPrice ? fmt(l.rentPrice) : '-', cols[5], y)
-    doc.text(l.salePrice ? fmt(l.salePrice) : '-', cols[6], y)
-    y += 7
+  autoTable(doc, {
+    startY: 20,
+    head: [['', 'Nombre', 'Tipo', 'Operación', 'Ciudad', 'Sup. m²', 'Alquiler', 'Venta']],
+    body: items.map(l => [
+      '',
+      l.name,
+      PROP_LABELS[l.propertyType] ?? l.propertyType,
+      OP_LABELS[l.operationType] ?? l.operationType,
+      l.address.city ?? '',
+      fmt(l.area),
+      l.rentPrice ? `${l.currency ?? 'USD'} ${fmt(l.rentPrice)}` : '—',
+      l.salePrice ? `${l.currency ?? 'USD'} ${fmt(l.salePrice)}` : '—',
+    ]),
+    headStyles:         { fillColor: BLUE, textColor: 255, fontStyle: 'bold', fontSize: 8 },
+    bodyStyles:         { fontSize: 7, textColor: [30, 30, 30], minCellHeight: 22, valign: 'middle' },
+    alternateRowStyles: { fillColor: [229, 241, 251] },
+    columnStyles: {
+      0: { cellWidth: 32, cellPadding: 1 },
+      1: { cellWidth: 55 },
+      2: { cellWidth: 26 },
+      3: { cellWidth: 26 },
+      4: { cellWidth: 26 },
+      5: { cellWidth: 18, halign: 'right' },
+      6: { cellWidth: 30, halign: 'right' },
+      7: { cellWidth: 30, halign: 'right' },
+    },
+    margin: { left: 8, right: 8 },
+    didDrawCell: (data) => {
+      if (data.column.index === 0 && data.row.section === 'body') {
+        const b64 = images[data.row.index]
+        if (b64) {
+          try {
+            doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20)
+          } catch { /* skip */ }
+        }
+      }
+    },
   })
 
   doc.save(`${filename}.pdf`)
@@ -131,37 +230,120 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
 
 // ─── Word ─────────────────────────────────────────────────────────────────────
 
-export async function exportPropertiesDocx(items: Property[], filename = 'inmuebles') {
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell,
-    TextRun, HeadingLevel, WidthType } = await import('docx')
+async function buildPropertySection(p: Property, coverBuf: ArrayBuffer | null, isLast: boolean) {
+  const {
+    Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
+    HeadingLevel, AlignmentType, BorderStyle, WidthType, PageBreak,
+  } = await import('docx')
 
-  const headerRow = new TableRow({
-    children: ['Nombre','Tipo','Ciudad','Sup. m²','Alq/m²','Vta/m²'].map(h =>
-      new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })] })
-    ),
-  })
+  const children: (typeof Paragraph.prototype | typeof Table.prototype)[] = []
 
-  const dataRows = items.map(p => new TableRow({
-    children: [
-      p.name,
-      PROP_LABELS[p.type] ?? p.type,
-      p.address.city ?? '',
-      String(p.totalArea),
-      p.rentPricePerM2 ? fmt(p.rentPricePerM2) : '-',
-      p.salePrice ? fmt(p.salePrice) : '-',
-    ].map(text => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, size: 16 })] })] }))
+  // Nombre
+  children.push(new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 200, after: 100 },
+    children: [new TextRun({ text: p.name, color: BLUE_HEX, bold: true, size: 28 })],
   }))
 
-  const doc = new Document({
-    sections: [{
+  // Portada
+  if (coverBuf) {
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 150 },
       children: [
-        new Paragraph({ text: 'Nexo.RE — Inmuebles', heading: HeadingLevel.HEADING_1 }),
-        new Paragraph({ text: `Total: ${items.length} registros`, spacing: { after: 300 } }),
-        new Table({ rows: [headerRow, ...dataRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
+        new ImageRun({
+          type: imgType(p.coverImage ?? ''),
+          data: coverBuf,
+          transformation: { width: 480, height: 280 },
+        }),
       ],
-    }],
-  })
+    }))
+  }
 
+  // Tabla de datos
+  const fields: [string, string][] = [
+    ['Tipo',             PROP_LABELS[p.type] ?? p.type],
+    ['Dirección',        p.address.formattedAddress ?? `${p.address.street ?? ''}, ${p.address.city ?? ''}`],
+    ['Ciudad',           p.address.city ?? '—'],
+    ['Superficie',       `${fmt(p.totalArea)} m²`],
+    ['Pisos',            p.floors != null ? String(p.floors) : '—'],
+    ['Año construcción', p.yearBuilt != null ? String(p.yearBuilt) : '—'],
+    ['Clase',            p.clase ?? '—'],
+    ['Alquiler /m²',     p.rentPricePerM2 ? `${p.currency ?? 'USD'} ${fmt(p.rentPricePerM2)}` : '—'],
+    ['Precio venta',     p.salePrice      ? `${p.currency ?? 'USD'} ${fmt(p.salePrice)}`      : '—'],
+  ]
+
+  const noBorder = { style: BorderStyle.NONE } as const
+  const borders  = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder }
+
+  children.push(new Table({
+    width:  { size: 100, type: WidthType.PERCENTAGE },
+    rows: fields.map(([label, value], i) => new TableRow({
+      children: [
+        new TableCell({
+          width:   { size: 28, type: WidthType.PERCENTAGE },
+          shading: { fill: 'E5F1FB', type: 'clear' as never },
+          borders,
+          children: [new Paragraph({
+            children: [new TextRun({ text: label, bold: true, size: 18, color: '323130' })],
+          })],
+        }),
+        new TableCell({
+          width:   { size: 72, type: WidthType.PERCENTAGE },
+          shading: { fill: i % 2 === 0 ? 'FFFFFF' : 'F8F8F8', type: 'clear' as never },
+          borders,
+          children: [new Paragraph({
+            children: [new TextRun({ text: value, size: 18 })],
+          })],
+        }),
+      ],
+    })),
+  }))
+
+  // Descripción
+  if (p.description) {
+    children.push(new Paragraph({
+      spacing: { before: 200 },
+      children: [new TextRun({ text: p.description, size: 18, color: '605e5c' })],
+    }))
+  }
+
+  // Salto de página (excepto el último)
+  if (!isLast) {
+    children.push(new Paragraph({
+      children: [new PageBreak()],
+    }))
+  }
+
+  return children
+}
+
+export async function exportPropertiesDocx(items: Property[], filename = 'inmuebles') {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx')
+
+  // Prefetch cover images en paralelo
+  const buffers = await Promise.all(
+    items.map(p => p.coverImage ? fetchBuffer(p.coverImage) : Promise.resolve(null))
+  )
+
+  const sections: (typeof Paragraph.prototype)[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 100 },
+      children: [new TextRun({ text: 'Nexo.RE — Inmuebles', color: BLUE_HEX, bold: true, size: 36 })],
+    }),
+    new Paragraph({
+      spacing: { after: 400 },
+      children: [new TextRun({ text: `${items.length} registros · ${today()}`, color: '605e5c', size: 18 })],
+    }),
+  ]
+
+  for (let i = 0; i < items.length; i++) {
+    const propertySections = await buildPropertySection(items[i], buffers[i], i === items.length - 1)
+    sections.push(...propertySections as never[])
+  }
+
+  const doc  = new Document({ sections: [{ children: sections as never[] }] })
   const blob = await Packer.toBlob(doc)
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
@@ -171,38 +353,107 @@ export async function exportPropertiesDocx(items: Property[], filename = 'inmueb
   URL.revokeObjectURL(url)
 }
 
-export async function exportListingsDocx(items: Listing[], filename = 'publicaciones') {
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell,
-    TextRun, HeadingLevel, WidthType } = await import('docx')
+async function buildListingSection(l: Listing, coverBuf: ArrayBuffer | null, isLast: boolean) {
+  const {
+    Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
+    HeadingLevel, AlignmentType, BorderStyle, WidthType, PageBreak,
+  } = await import('docx')
 
-  const headerRow = new TableRow({
-    children: ['Nombre','Tipo','Operación','Ciudad','Sup.','Alquiler','Venta'].map(h =>
-      new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 18 })] })] })
-    ),
-  })
+  const children: (typeof Paragraph.prototype | typeof Table.prototype)[] = []
 
-  const dataRows = items.map(l => new TableRow({
-    children: [
-      l.name,
-      PROP_LABELS[l.propertyType] ?? l.propertyType,
-      OP_LABELS[l.operationType] ?? l.operationType,
-      l.address.city ?? '',
-      String(l.area),
-      l.rentPrice ? `${l.currency ?? 'USD'} ${fmt(l.rentPrice)}` : '-',
-      l.salePrice ? `${l.currency ?? 'USD'} ${fmt(l.salePrice)}` : '-',
-    ].map(text => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, size: 16 })] })] }))
+  children.push(new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 200, after: 100 },
+    children: [new TextRun({ text: l.name, color: BLUE_HEX, bold: true, size: 28 })],
   }))
 
-  const doc = new Document({
-    sections: [{
+  if (coverBuf) {
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 150 },
       children: [
-        new Paragraph({ text: 'Nexo.RE — Publicaciones', heading: HeadingLevel.HEADING_1 }),
-        new Paragraph({ text: `Total: ${items.length} registros`, spacing: { after: 300 } }),
-        new Table({ rows: [headerRow, ...dataRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
+        new ImageRun({
+          type: imgType(l.coverImage ?? ''),
+          data: coverBuf,
+          transformation: { width: 480, height: 280 },
+        }),
       ],
-    }],
-  })
+    }))
+  }
 
+  const fields: [string, string][] = [
+    ['Tipo',       PROP_LABELS[l.propertyType] ?? l.propertyType],
+    ['Operación',  OP_LABELS[l.operationType] ?? l.operationType],
+    ['Dirección',  l.address.formattedAddress ?? `${l.address.street ?? ''}, ${l.address.city ?? ''}`],
+    ['Ciudad',     l.address.city ?? '—'],
+    ['Superficie', `${fmt(l.area)} m²`],
+    ['Piso',       l.floor ?? '—'],
+    ['Alquiler',   l.rentPrice ? `${l.currency ?? 'USD'} ${fmt(l.rentPrice)}` : '—'],
+    ['Venta',      l.salePrice ? `${l.currency ?? 'USD'} ${fmt(l.salePrice)}` : '—'],
+  ]
+
+  const noBorder = { style: BorderStyle.NONE } as const
+  const borders  = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder }
+
+  children.push(new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows:  fields.map(([label, value], i) => new TableRow({
+      children: [
+        new TableCell({
+          width:   { size: 28, type: WidthType.PERCENTAGE },
+          shading: { fill: 'E5F1FB', type: 'clear' as never },
+          borders,
+          children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 18, color: '323130' })] })],
+        }),
+        new TableCell({
+          width:   { size: 72, type: WidthType.PERCENTAGE },
+          shading: { fill: i % 2 === 0 ? 'FFFFFF' : 'F8F8F8', type: 'clear' as never },
+          borders,
+          children: [new Paragraph({ children: [new TextRun({ text: value, size: 18 })] })],
+        }),
+      ],
+    })),
+  }))
+
+  if (l.description) {
+    children.push(new Paragraph({
+      spacing: { before: 200 },
+      children: [new TextRun({ text: l.description, size: 18, color: '605e5c' })],
+    }))
+  }
+
+  if (!isLast) {
+    children.push(new Paragraph({ children: [new PageBreak()] }))
+  }
+
+  return children
+}
+
+export async function exportListingsDocx(items: Listing[], filename = 'publicaciones') {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx')
+
+  const buffers = await Promise.all(
+    items.map(l => l.coverImage ? fetchBuffer(l.coverImage) : Promise.resolve(null))
+  )
+
+  const sections: (typeof Paragraph.prototype)[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 100 },
+      children: [new TextRun({ text: 'Nexo.RE — Publicaciones', color: BLUE_HEX, bold: true, size: 36 })],
+    }),
+    new Paragraph({
+      spacing: { after: 400 },
+      children: [new TextRun({ text: `${items.length} registros · ${today()}`, color: '605e5c', size: 18 })],
+    }),
+  ]
+
+  for (let i = 0; i < items.length; i++) {
+    const listingSections = await buildListingSection(items[i], buffers[i], i === items.length - 1)
+    sections.push(...listingSections as never[])
+  }
+
+  const doc  = new Document({ sections: [{ children: sections as never[] }] })
   const blob = await Packer.toBlob(doc)
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')

@@ -1,15 +1,16 @@
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  HeadingLevel, AlignmentType, BorderStyle, WidthType } from 'docx'
+  ImageRun, HeadingLevel, AlignmentType, BorderStyle, WidthType, PageBreak } from 'docx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
 export interface SelectionPin {
-  id: string
-  kind: 'property' | 'listing'
-  title: string
-  subtitle: string
-  lat: number
-  lng: number
+  id:          string
+  kind:        'property' | 'listing'
+  title:       string
+  subtitle:    string
+  lat:         number
+  lng:         number
+  coverImage?: string
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -19,22 +20,51 @@ const KIND_LABEL: Record<string, string> = {
 
 const HEADER_COLOR: [number, number, number] = [0, 120, 212]
 const HEADER_HEX = '0078D4'
-const fmt = (n: number) => n.toFixed(6)
-const label = () => new Date().toISOString().slice(0, 10)
+const fmtCoord   = (n: number) => n.toFixed(6)
+const label      = () => new Date().toISOString().slice(0, 10)
+
+// ── Image utilities ───────────────────────────────────────────────────────────
+
+async function fetchBase64(url: string): Promise<string | null> {
+  try {
+    const res  = await fetch(url)
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const r = new FileReader()
+      r.onload  = () => resolve(r.result as string)
+      r.onerror = reject
+      r.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
+
+async function fetchBuffer(url: string): Promise<ArrayBuffer | null> {
+  try { return await (await fetch(url)).arrayBuffer() }
+  catch { return null }
+}
+
+function imgType(url: string): 'jpg' | 'png' | 'gif' | 'bmp' {
+  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
+  if (ext === 'png') return 'png'
+  if (ext === 'gif') return 'gif'
+  if (ext === 'bmp') return 'bmp'
+  return 'jpg'
+}
 
 // ── Excel ─────────────────────────────────────────────────────────────────────
 
 export async function exportSelectionXlsx(pins: SelectionPin[]) {
   const XLSX = await import('xlsx')
   const rows = pins.map(p => ({
-    'Tipo':     KIND_LABEL[p.kind] ?? p.kind,
-    'Nombre':   p.title,
-    'Detalle':  p.subtitle,
-    'Latitud':  p.lat,
-    'Longitud': p.lng,
+    'Tipo':          KIND_LABEL[p.kind] ?? p.kind,
+    'Nombre':        p.title,
+    'Detalle':       p.subtitle,
+    'Latitud':       p.lat,
+    'Longitud':      p.lng,
+    'Portada (URL)': p.coverImage ?? '',
   }))
   const ws = XLSX.utils.json_to_sheet(rows)
-  ws['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 40 }, { wch: 12 }, { wch: 12 }]
+  ws['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 60 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Selección')
   XLSX.writeFile(wb, `seleccion-mapa-${label()}.xlsx`)
@@ -42,40 +72,55 @@ export async function exportSelectionXlsx(pins: SelectionPin[]) {
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
 
-export function exportSelectionPdf(pins: SelectionPin[]) {
+export async function exportSelectionPdf(pins: SelectionPin[]) {
+  const images = await Promise.all(
+    pins.map(p => p.coverImage ? fetchBase64(p.coverImage) : Promise.resolve(null))
+  )
+
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
 
   doc.setFillColor(...HEADER_COLOR)
-  doc.rect(0, 0, 297, 18, 'F')
+  doc.rect(0, 0, 297, 16, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
-  doc.text('Nexo.RE — Selección del mapa', 10, 12)
+  doc.text('Nexo.RE — Selección del mapa', 10, 11)
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
-  doc.text(`${pins.length} elemento${pins.length !== 1 ? 's' : ''} · ${label()}`, 210, 12)
+  doc.text(`${pins.length} elemento${pins.length !== 1 ? 's' : ''} · ${label()}`, 220, 11)
 
   autoTable(doc, {
-    startY: 22,
-    head: [['Tipo', 'Nombre', 'Detalle', 'Latitud', 'Longitud']],
+    startY: 20,
+    head: [['', 'Tipo', 'Nombre', 'Detalle', 'Lat', 'Lng']],
     body: pins.map(p => [
+      '',
       KIND_LABEL[p.kind] ?? p.kind,
       p.title,
       p.subtitle,
-      fmt(p.lat),
-      fmt(p.lng),
+      fmtCoord(p.lat),
+      fmtCoord(p.lng),
     ]),
-    headStyles: { fillColor: HEADER_COLOR, textColor: 255, fontStyle: 'bold', fontSize: 9 },
-    bodyStyles: { fontSize: 8, textColor: [30, 30, 30] },
+    headStyles:         { fillColor: HEADER_COLOR, textColor: 255, fontStyle: 'bold', fontSize: 8 },
+    bodyStyles:         { fontSize: 7, textColor: [30, 30, 30], minCellHeight: 22, valign: 'middle' },
     alternateRowStyles: { fillColor: [229, 241, 251] },
     columnStyles: {
-      0: { cellWidth: 24 },
-      1: { cellWidth: 70 },
-      2: { cellWidth: 100 },
-      3: { cellWidth: 28 },
-      4: { cellWidth: 28 },
+      0: { cellWidth: 32, cellPadding: 1 },
+      1: { cellWidth: 22 },
+      2: { cellWidth: 65 },
+      3: { cellWidth: 95 },
+      4: { cellWidth: 26 },
+      5: { cellWidth: 26 },
     },
-    margin: { left: 10, right: 10 },
+    margin: { left: 8, right: 8 },
+    didDrawCell: (data) => {
+      if (data.column.index === 0 && data.row.section === 'body') {
+        const b64 = images[data.row.index]
+        if (b64) {
+          try { doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20) }
+          catch { /* skip */ }
+        }
+      }
+    },
   })
 
   doc.save(`seleccion-mapa-${label()}.pdf`)
@@ -84,64 +129,98 @@ export function exportSelectionPdf(pins: SelectionPin[]) {
 // ── Word ──────────────────────────────────────────────────────────────────────
 
 export async function exportSelectionDocx(pins: SelectionPin[]) {
-  const headerRow = new TableRow({
-    tableHeader: true,
-    children: ['Tipo', 'Nombre', 'Detalle', 'Latitud', 'Longitud'].map(text =>
-      new TableCell({
-        shading: { fill: HEADER_HEX, type: 'clear' as never },
-        children: [new Paragraph({
-          children: [new TextRun({ text, color: 'FFFFFF', bold: true, size: 18 })],
-          alignment: AlignmentType.CENTER,
-        })],
-        borders: {
-          top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE },
-          left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE },
-        },
-      })
-    ),
-  })
-
-  const dataRows = pins.map((p, i) =>
-    new TableRow({
-      children: [
-        KIND_LABEL[p.kind] ?? p.kind,
-        p.title,
-        p.subtitle,
-        fmt(p.lat),
-        fmt(p.lng),
-      ].map(text =>
-        new TableCell({
-          shading: { fill: i % 2 === 0 ? 'E5F1FB' : 'FFFFFF', type: 'clear' as never },
-          children: [new Paragraph({ children: [new TextRun({ text: String(text), size: 18 })] })],
-          borders: {
-            top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE },
-            left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE },
-          },
-        })
-      ),
-    })
+  const buffers = await Promise.all(
+    pins.map(p => p.coverImage ? fetchBuffer(p.coverImage) : Promise.resolve(null))
   )
 
-  const doc = new Document({
-    sections: [{
-      children: [
-        new Paragraph({
-          heading: HeadingLevel.HEADING_1,
-          children: [new TextRun({ text: 'Nexo.RE — Selección del mapa', color: HEADER_HEX, bold: true })],
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: `${pins.length} elemento${pins.length !== 1 ? 's' : ''} · ${label()}`, color: '64748b', size: 18 })],
-        }),
-        new Paragraph({ children: [] }),
-        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...dataRows] }),
-      ],
-    }],
-  })
+  const noBorder = { style: BorderStyle.NONE } as const
+  const borders  = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder }
 
+  const children: (Paragraph | Table)[] = [
+    new Paragraph({
+      heading:  HeadingLevel.HEADING_1,
+      spacing:  { after: 100 },
+      children: [new TextRun({ text: 'Nexo.RE — Selección del mapa', color: HEADER_HEX, bold: true, size: 36 })],
+    }),
+    new Paragraph({
+      spacing:  { after: 400 },
+      children: [new TextRun({
+        text:  `${pins.length} elemento${pins.length !== 1 ? 's' : ''} · ${label()}`,
+        color: '64748b', size: 18,
+      })],
+    }),
+  ]
+
+  for (let i = 0; i < pins.length; i++) {
+    const p   = pins[i]
+    const buf = buffers[i]
+
+    // Nombre + tipo
+    children.push(new Paragraph({
+      heading:  HeadingLevel.HEADING_2,
+      spacing:  { before: 200, after: 80 },
+      children: [new TextRun({ text: p.title, color: HEADER_HEX, bold: true, size: 26 })],
+    }))
+
+    children.push(new Paragraph({
+      spacing:  { after: 100 },
+      children: [new TextRun({ text: `${KIND_LABEL[p.kind]} · ${p.subtitle}`, size: 18, color: '605e5c' })],
+    }))
+
+    // Portada
+    if (buf) {
+      children.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing:   { after: 150 },
+        children:  [
+          new ImageRun({
+            type:           imgType(p.coverImage ?? ''),
+            data:           buf,
+            transformation: { width: 480, height: 280 },
+          }),
+        ],
+      }))
+    }
+
+    // Coordenadas
+    const fields: [string, string][] = [
+      ['Tipo',      KIND_LABEL[p.kind]],
+      ['Detalle',   p.subtitle],
+      ['Latitud',   fmtCoord(p.lat)],
+      ['Longitud',  fmtCoord(p.lng)],
+    ]
+
+    children.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows:  fields.map(([key, value], idx) => new TableRow({
+        children: [
+          new TableCell({
+            width:   { size: 28, type: WidthType.PERCENTAGE },
+            shading: { fill: 'E5F1FB', type: 'clear' as never },
+            borders,
+            children: [new Paragraph({ children: [new TextRun({ text: key, bold: true, size: 18, color: '323130' })] })],
+          }),
+          new TableCell({
+            width:   { size: 72, type: WidthType.PERCENTAGE },
+            shading: { fill: idx % 2 === 0 ? 'FFFFFF' : 'F8F8F8', type: 'clear' as never },
+            borders,
+            children: [new Paragraph({ children: [new TextRun({ text: value, size: 18 })] })],
+          }),
+        ],
+      })),
+    }))
+
+    // Salto de página entre elementos
+    if (i < pins.length - 1) {
+      children.push(new Paragraph({ spacing: { before: 200 }, children: [new PageBreak()] }))
+    }
+  }
+
+  const doc  = new Document({ sections: [{ children: children as never[] }] })
   const blob = await Packer.toBlob(doc)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
   a.download = `seleccion-mapa-${label()}.docx`
   a.click()
   URL.revokeObjectURL(url)

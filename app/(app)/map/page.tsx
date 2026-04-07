@@ -316,19 +316,20 @@ function MapInner({ pins, showProps, showListings, chatKeys }: {
   const selectionPins: SelectionPin[] = pins
     .filter(p => selected.has(p.key))
     .map(p => ({
-      id:       p.data.id,
-      kind:     p.kind,
-      title:    p.data.name,
-      subtitle: p.data.address.formattedAddress ?? `${p.data.address.street ?? ''}, ${p.data.address.city ?? ''}`,
-      lat:      p.lat,
-      lng:      p.lng,
+      id:          p.data.id,
+      kind:        p.kind,
+      title:       p.data.name,
+      subtitle:    p.data.address.formattedAddress ?? `${p.data.address.street ?? ''}, ${p.data.address.city ?? ''}`,
+      lat:         p.lat,
+      lng:         p.lng,
+      coverImage:  p.data.coverImage,
     }))
 
   const runExport = async (type: string) => {
     if (!selectionPins.length) return
     setExporting(type)
     if (type === 'xlsx') await exportSelectionXlsx(selectionPins)
-    if (type === 'pdf')  exportSelectionPdf(selectionPins)
+    if (type === 'pdf')  await exportSelectionPdf(selectionPins)
     if (type === 'docx') await exportSelectionDocx(selectionPins)
     setExporting('')
   }
