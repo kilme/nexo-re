@@ -10,8 +10,8 @@ const config: Config = {
     extend: {
       colors: {
         dyn: {
-          DEFAULT: '#0078D4',
-          dark:    '#005A9E',
+          DEFAULT: '#021838',
+          dark:    '#010f22',
           light:   '#EFF6FC',
           50:      '#F3F9FE',
           100:     '#D0E7F8',

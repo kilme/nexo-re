@@ -216,7 +216,7 @@ function ChatPanel({ allPins, onResults, onClear }: {
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && (
           <div className="text-center py-4 px-2">
-            <div className="text-2xl mb-2">🤖</div>
+            <div className="text-2xl mb-2">✦</div>
             <p className="text-[11px] text-col-muted font-medium mb-3">¿Qué estás buscando?</p>
             <div className="space-y-1.5">
               {EXAMPLES.map(ex => (
@@ -456,7 +456,7 @@ export default function MapPage() {
       <aside className="w-60 flex-shrink-0 bg-white border-r border-col-border flex flex-col">
         {/* Tabs */}
         <div className="flex border-b border-col-border flex-shrink-0">
-          {([['filters','Filtros'],['chat','🤖 Búsqueda IA']] as const).map(([t, label]) => (
+          {([['filters','Filtros'],['chat','Búsqueda IA']] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 text-xs py-2.5 font-medium transition-colors ${
                 tab === t ? 'border-b-2 border-dyn text-dyn' : 'text-col-muted hover:text-col-text'

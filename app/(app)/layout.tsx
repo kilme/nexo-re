@@ -4,9 +4,9 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 
 const NAV = [
+  { href: '/map',        label: 'Mapa',          icon: '🗺️' },
   { href: '/properties', label: 'Inmuebles',    icon: '🏢' },
   { href: '/listings',   label: 'Publicaciones', icon: '📢' },
-  { href: '/map',        label: 'Mapa',          icon: '🗺️' },
 ]
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
