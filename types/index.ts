@@ -12,9 +12,13 @@ export interface PropertyAddress {
   lng?: number
 }
 
+export type ImagenTipo = 'portada' | 'fachada' | 'interior' | 'planta' | 'exterior'
+
 export interface Imagen {
-  url: string
-  tipo?: string   // ej: "fachada", "lobby", "planta", "vista aérea"
+  url:         string
+  tipo:        ImagenTipo
+  descripcion?: string  // descripción generada por IA
+  fileName:    string   // nombre original del archivo (para poder eliminarlo)
 }
 
 export interface Property {
