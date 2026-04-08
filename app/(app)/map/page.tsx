@@ -419,10 +419,25 @@ export default function MapPage() {
   const [properties, setProperties] = useState<Property[]>([])
   const [listings,   setListings]   = useState<Listing[]>([])
   const [loading,    setLoading]    = useState(true)
-  const [showProps,  setShowProps]  = useState(true)
-  const [showList,   setShowList]   = useState(true)
-  const [tab,        setTab]        = useState<'filters' | 'chat'>('filters')
-  const [chatKeys,   setChatKeys]   = useState<Set<string> | null>(null)
+  const [showProps,     setShowProps]     = useState(true)
+  const [showList,      setShowList]      = useState(true)
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set(Object.keys(TYPE_COLORS)))
+  const [tab,           setTab]           = useState<'filters' | 'chat'>('filters')
+  const [chatKeys,      setChatKeys]      = useState<Set<string> | null>(null)
+
+  const toggleType = (type: string) =>
+    setSelectedTypes(prev => {
+      const next = new Set(prev)
+      next.has(type) ? next.delete(type) : next.add(type)
+      return next
+    })
+
+  const allTypesSelected = selectedTypes.size === Object.keys(TYPE_COLORS).length
+
+  const toggleAllTypes = () =>
+    setSelectedTypes(
+      allTypesSelected ? new Set() : new Set(Object.keys(TYPE_COLORS))
+    )
 
   useEffect(() => {
     Promise.all([getProperties(), getListings()])
@@ -441,10 +456,10 @@ export default function MapPage() {
 
   const pins: MapPin[] = [
     ...properties
-      .filter(p => p.address.lat && p.address.lng)
+      .filter(p => p.address.lat && p.address.lng && selectedTypes.has(p.type))
       .map(p => ({ kind: 'property' as const, data: p, lat: p.address.lat!, lng: p.address.lng!, key: `property-${p.id}` })),
     ...listings
-      .filter(l => l.address.lat && l.address.lng)
+      .filter(l => l.address.lat && l.address.lng && selectedTypes.has(l.propertyType))
       .map(l => ({ kind: 'listing' as const, data: l, lat: l.address.lat!, lng: l.address.lng!, key: `listing-${l.id}` })),
   ]
 
@@ -468,27 +483,53 @@ export default function MapPage() {
 
         {tab === 'filters' ? (
           <div className="p-4 space-y-4 flex-1 overflow-y-auto">
-            <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide">Capas</p>
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input type="checkbox" checked={showProps} onChange={e => setShowProps(e.target.checked)} className="accent-dyn w-3.5 h-3.5" />
-                <span className="flex items-center gap-1.5">🏢 Inmuebles <span className="text-col-muted">({properties.length})</span></span>
-              </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input type="checkbox" checked={showList} onChange={e => setShowList(e.target.checked)} className="accent-col-green w-3.5 h-3.5" />
-                <span className="flex items-center gap-1.5">📢 Publicaciones <span className="text-col-muted">({listings.length})</span></span>
-              </label>
+
+            {/* Capas */}
+            <div>
+              <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide mb-2">Capas</p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={showProps} onChange={e => setShowProps(e.target.checked)} className="accent-dyn w-3.5 h-3.5" />
+                  <span className="flex items-center gap-1.5">🏢 Inmuebles <span className="text-col-muted">({properties.filter(p => selectedTypes.has(p.type)).length})</span></span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={showList} onChange={e => setShowList(e.target.checked)} className="accent-col-green w-3.5 h-3.5" />
+                  <span className="flex items-center gap-1.5">📢 Publicaciones <span className="text-col-muted">({listings.filter(l => selectedTypes.has(l.propertyType)).length})</span></span>
+                </label>
+              </div>
             </div>
 
+            {/* Tipo */}
             <div className="pt-3 border-t border-col-border">
-              <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide mb-2">Colores por tipo</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-semibold text-col-muted uppercase tracking-wide">Tipo</p>
+                <button onClick={toggleAllTypes} className="text-[10px] text-dyn hover:underline">
+                  {allTypesSelected ? 'Ninguno' : 'Todos'}
+                </button>
+              </div>
               <div className="space-y-1.5">
-                {Object.entries(TYPE_COLORS).map(([type, color]) => (
-                  <div key={type} className="flex items-center gap-2 text-[11px] text-col-muted">
-                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                    {PROP_LABELS[type] ?? type}
-                  </div>
-                ))}
+                {Object.entries(TYPE_COLORS).map(([type, color]) => {
+                  const active = selectedTypes.has(type)
+                  return (
+                    <label key={type} className="flex items-center gap-2 text-xs cursor-pointer group">
+                      <span
+                        onClick={() => toggleType(type)}
+                        className={`w-3.5 h-3.5 rounded-sm flex-shrink-0 border transition-opacity cursor-pointer ${active ? 'opacity-100' : 'opacity-25'}`}
+                        style={{ backgroundColor: color, borderColor: color }}
+                      />
+                      <input
+                        type="checkbox" checked={active} onChange={() => toggleType(type)}
+                        className="sr-only"
+                      />
+                      <span
+                        onClick={() => toggleType(type)}
+                        className={`transition-colors ${active ? 'text-col-text' : 'text-col-muted'}`}
+                      >
+                        {PROP_LABELS[type] ?? type}
+                      </span>
+                    </label>
+                  )
+                })}
               </div>
             </div>
 

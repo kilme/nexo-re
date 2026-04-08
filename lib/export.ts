@@ -16,9 +16,11 @@ const today = () => new Date().toLocaleDateString('es-AR')
 
 // ─── Image utilities ──────────────────────────────────────────────────────────
 
+const proxied = (url: string) => `/api/image-proxy?url=${encodeURIComponent(url)}`
+
 async function fetchBase64(url: string): Promise<string | null> {
   try {
-    const res  = await fetch(url)
+    const res  = await fetch(proxied(url))
     const blob = await res.blob()
     return await new Promise<string>((resolve, reject) => {
       const r = new FileReader()
@@ -30,7 +32,7 @@ async function fetchBase64(url: string): Promise<string | null> {
 }
 
 async function fetchBuffer(url: string): Promise<ArrayBuffer | null> {
-  try { return await (await fetch(url)).arrayBuffer() }
+  try { return await (await fetch(proxied(url))).arrayBuffer() }
   catch { return null }
 }
 
