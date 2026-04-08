@@ -155,7 +155,8 @@ export async function exportPropertiesPdf(items: Property[], filename = 'inmuebl
         const b64 = images[data.row.index]
         if (b64) {
           try {
-            doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20)
+            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
+            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
           } catch { /* skip si la imagen falla */ }
         }
       }
@@ -220,7 +221,8 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
         const b64 = images[data.row.index]
         if (b64) {
           try {
-            doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20)
+            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
+            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
           } catch { /* skip */ }
         }
       }

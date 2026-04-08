@@ -118,7 +118,10 @@ export async function exportSelectionPdf(pins: SelectionPin[]) {
       if (data.column.index === 0 && data.row.section === 'body') {
         const b64 = images[data.row.index]
         if (b64) {
-          try { doc.addImage(b64, data.cell.x + 1, data.cell.y + 1, 30, 20) }
+          try {
+            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
+            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
+          }
           catch { /* skip */ }
         }
       }

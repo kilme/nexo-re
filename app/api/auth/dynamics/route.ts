@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const userEmail = p.get('userEmail') ?? ''
 
   const base = publicBaseUrl(req)
-  const res  = NextResponse.redirect(`${base}/properties`)
+  const res  = NextResponse.redirect(`${base}/map`)
 
   const cookieOpts = {
     httpOnly: false,
