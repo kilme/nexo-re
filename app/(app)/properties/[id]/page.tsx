@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getProperty } from '@/lib/firestore'
+import { fetchImgData } from '@/lib/export'
 import type { Property } from '@/types'
 
 const PROP_LABELS: Record<string, string> = {
@@ -12,7 +13,15 @@ const PROP_LABELS: Record<string, string> = {
 const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-AR') : '—'
 
 async function exportPdf(property: Property) {
+  console.log('[exportPdf] start — property.id:', property.id)
+  console.log('[exportPdf] coverImage:', property.coverImage)
+  console.log('[exportPdf] images:', property.images)
   const { default: jsPDF } = await import('jspdf')
+  const coverUrl = property.coverImage ?? property.images?.[0]?.url
+  console.log('[exportPdf] coverUrl resolved:', coverUrl)
+  const img = coverUrl ? await fetchImgData(coverUrl) : null
+  console.log('[exportPdf] img result:', img ? `format=${img.format} bytes=${img.data.byteLength}` : 'null')
+
   const doc  = new jsPDF()
   const blue = [0, 120, 212] as [number, number, number]
   doc.setFillColor(...blue)
@@ -21,7 +30,15 @@ async function exportPdf(property: Property) {
   doc.setFontSize(14)
   doc.text('Nexo.RE — Ficha de Inmueble', 10, 13)
   doc.setTextColor(0, 0, 0)
-  let y = 32
+
+  let y = 28
+  if (img) {
+    try {
+      doc.addImage(img.data, img.format, 10, y, 190, 90)
+      y += 95
+    } catch { /* skip */ }
+  }
+
   const line = (label: string, value: string) => {
     doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
@@ -76,7 +93,15 @@ async function exportXlsx(property: Property) {
 }
 
 async function exportDocx(property: Property) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx')
+  console.log('[exportDocx] start — property.id:', property.id)
+  console.log('[exportDocx] coverImage:', property.coverImage)
+  console.log('[exportDocx] images:', property.images)
+  const { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType } = await import('docx')
+  const coverUrl = property.coverImage ?? property.images?.[0]?.url
+  console.log('[exportDocx] coverUrl resolved:', coverUrl)
+  const img = coverUrl ? await fetchImgData(coverUrl) : null
+  console.log('[exportDocx] img result:', img ? `format=${img.format} bytes=${img.data.byteLength}` : 'null')
+
   const field = (label: string, value: string) =>
     new Paragraph({
       children: [
@@ -85,9 +110,19 @@ async function exportDocx(property: Property) {
       ],
       spacing: { after: 100 },
     })
-  const children = [
+
+  const children: InstanceType<typeof Paragraph>[] = [
     new Paragraph({ text: `Inmueble: ${property.name}`, heading: HeadingLevel.HEADING_1 }),
     new Paragraph({ text: '', spacing: { after: 200 } }),
+    ...(img ? [new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 300 },
+      children: [new ImageRun({
+        type: img.format === 'PNG' ? 'png' : 'jpg',
+        data: img.data,
+        transformation: { width: 480, height: 270 },
+      })],
+    })] : []),
     field('Tipo', PROP_LABELS[property.type] ?? property.type),
     field('Dirección', property.address.formattedAddress ?? `${property.address.street ?? ''}, ${property.address.city ?? ''}`),
     field('Ciudad', property.address.city ?? ''),
@@ -127,6 +162,7 @@ export default function PropertyDetailPage() {
 
   const runExport = async (type: string) => {
     if (!property) return
+    console.log('[runExport] type:', type, '| property:', property.id, '| coverImage:', property.coverImage, '| images count:', property.images?.length ?? 0)
     setExporting(type)
     if (type === 'pdf')  await exportPdf(property)
     if (type === 'xlsx') await exportXlsx(property)

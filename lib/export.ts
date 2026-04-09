@@ -19,14 +19,21 @@ const today = () => new Date().toLocaleDateString('es-AR')
 const proxied = (url: string) => `/api/image-proxy?url=${encodeURIComponent(url)}`
 
 // Devuelve { data: Uint8Array, format: 'JPEG'|'PNG' } listo para jsPDF e ImageRun
-async function fetchImgData(url: string): Promise<{ data: Uint8Array; format: 'JPEG' | 'PNG' } | null> {
+export async function fetchImgData(url: string): Promise<{ data: Uint8Array; format: 'JPEG' | 'PNG' } | null> {
   try {
+    console.log('[export] fetching:', proxied(url))
     const res    = await fetch(proxied(url))
+    console.log('[export] status:', res.status, 'content-type:', res.headers.get('content-type'))
+    if (!res.ok) { console.warn('[export] fetch failed:', res.status); return null }
     const ct     = res.headers.get('content-type') ?? ''
     const format = ct.includes('png') ? 'PNG' : 'JPEG'
     const buf    = await res.arrayBuffer()
+    console.log('[export] image size (bytes):', buf.byteLength, 'format:', format)
     return { data: new Uint8Array(buf), format }
-  } catch { return null }
+  } catch (e) {
+    console.error('[export] fetchImgData error:', e)
+    return null
+  }
 }
 
 
@@ -92,7 +99,10 @@ export async function exportPropertiesPdf(items: Property[], filename = 'inmuebl
 
   // Prefetch cover images in parallel
   const images = await Promise.all(
-    items.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
+    items.map(p => {
+      const url = p.coverImage ?? p.images?.[0]?.url
+      return url ? fetchImgData(url) : Promise.resolve(null)
+    })
   )
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -158,7 +168,10 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
   ])
 
   const images = await Promise.all(
-    items.map(l => l.coverImage ? fetchImgData(l.coverImage) : Promise.resolve(null))
+    items.map(l => {
+      const url = l.coverImage ?? l.images?.[0]?.url
+      return url ? fetchImgData(url) : Promise.resolve(null)
+    })
   )
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -311,7 +324,10 @@ export async function exportPropertiesDocx(items: Property[], filename = 'inmueb
 
   // Prefetch cover images en paralelo
   const buffers = await Promise.all(
-    items.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
+    items.map(p => {
+      const url = p.coverImage ?? p.images?.[0]?.url
+      return url ? fetchImgData(url) : Promise.resolve(null)
+    })
   )
 
   const sections: (typeof Paragraph.prototype)[] = [
@@ -421,7 +437,10 @@ export async function exportListingsDocx(items: Listing[], filename = 'publicaci
   const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx')
 
   const buffers = await Promise.all(
-    items.map(l => l.coverImage ? fetchImgData(l.coverImage) : Promise.resolve(null))
+    items.map(l => {
+      const url = l.coverImage ?? l.images?.[0]?.url
+      return url ? fetchImgData(url) : Promise.resolve(null)
+    })
   )
 
   const sections: (typeof Paragraph.prototype)[] = [

@@ -18,6 +18,7 @@ function ExportMenu({ items, filename }: { items: Property[]; filename: string }
 
   const run = async (type: string) => {
     setLoading(type); setOpen(false)
+    console.log('[export] items[0]:', JSON.stringify({ coverImage: items[0]?.coverImage, images: items[0]?.images }))
     if (type === 'xlsx') await exportPropertiesXlsx(items, filename)
     if (type === 'pdf')  await exportPropertiesPdf(items, filename)
     if (type === 'docx') await exportPropertiesDocx(items, filename)
