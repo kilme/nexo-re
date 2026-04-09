@@ -18,31 +18,17 @@ const today = () => new Date().toLocaleDateString('es-AR')
 
 const proxied = (url: string) => `/api/image-proxy?url=${encodeURIComponent(url)}`
 
-async function fetchBase64(url: string): Promise<string | null> {
+// Devuelve { data: Uint8Array, format: 'JPEG'|'PNG' } listo para jsPDF e ImageRun
+async function fetchImgData(url: string): Promise<{ data: Uint8Array; format: 'JPEG' | 'PNG' } | null> {
   try {
-    const res  = await fetch(proxied(url))
-    const blob = await res.blob()
-    return await new Promise<string>((resolve, reject) => {
-      const r = new FileReader()
-      r.onload  = () => resolve(r.result as string)
-      r.onerror = reject
-      r.readAsDataURL(blob)
-    })
+    const res    = await fetch(proxied(url))
+    const ct     = res.headers.get('content-type') ?? ''
+    const format = ct.includes('png') ? 'PNG' : 'JPEG'
+    const buf    = await res.arrayBuffer()
+    return { data: new Uint8Array(buf), format }
   } catch { return null }
 }
 
-async function fetchBuffer(url: string): Promise<ArrayBuffer | null> {
-  try { return await (await fetch(proxied(url))).arrayBuffer() }
-  catch { return null }
-}
-
-function imgType(url: string): 'jpg' | 'png' | 'gif' | 'bmp' {
-  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
-  if (ext === 'png') return 'png'
-  if (ext === 'gif') return 'gif'
-  if (ext === 'bmp') return 'bmp'
-  return 'jpg'
-}
 
 // ─── Excel ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +92,7 @@ export async function exportPropertiesPdf(items: Property[], filename = 'inmuebl
 
   // Prefetch cover images in parallel
   const images = await Promise.all(
-    items.map(p => p.coverImage ? fetchBase64(p.coverImage) : Promise.resolve(null))
+    items.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
   )
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -152,11 +138,10 @@ export async function exportPropertiesPdf(items: Property[], filename = 'inmuebl
     margin: { left: 8, right: 8 },
     didDrawCell: (data) => {
       if (data.column.index === 0 && data.row.section === 'body') {
-        const b64 = images[data.row.index]
-        if (b64) {
+        const img = images[data.row.index]
+        if (img) {
           try {
-            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
-            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
+            doc.addImage(img.data, img.format, data.cell.x + 1, data.cell.y + 1, 30, 20)
           } catch { /* skip si la imagen falla */ }
         }
       }
@@ -173,7 +158,7 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
   ])
 
   const images = await Promise.all(
-    items.map(l => l.coverImage ? fetchBase64(l.coverImage) : Promise.resolve(null))
+    items.map(l => l.coverImage ? fetchImgData(l.coverImage) : Promise.resolve(null))
   )
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -218,11 +203,10 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
     margin: { left: 8, right: 8 },
     didDrawCell: (data) => {
       if (data.column.index === 0 && data.row.section === 'body') {
-        const b64 = images[data.row.index]
-        if (b64) {
+        const img = images[data.row.index]
+        if (img) {
           try {
-            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
-            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
+            doc.addImage(img.data, img.format, data.cell.x + 1, data.cell.y + 1, 30, 20)
           } catch { /* skip */ }
         }
       }
@@ -234,7 +218,7 @@ export async function exportListingsPdf(items: Listing[], filename = 'publicacio
 
 // ─── Word ─────────────────────────────────────────────────────────────────────
 
-async function buildPropertySection(p: Property, coverBuf: ArrayBuffer | null, isLast: boolean) {
+async function buildPropertySection(p: Property, coverBuf: { data: Uint8Array; format: 'JPEG' | 'PNG' } | null, isLast: boolean) {
   const {
     Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
     HeadingLevel, AlignmentType, BorderStyle, WidthType, PageBreak,
@@ -256,8 +240,8 @@ async function buildPropertySection(p: Property, coverBuf: ArrayBuffer | null, i
       spacing: { after: 150 },
       children: [
         new ImageRun({
-          type: imgType(p.coverImage ?? ''),
-          data: coverBuf,
+          type: coverBuf.format === 'PNG' ? 'png' : 'jpg',
+          data: coverBuf.data,
           transformation: { width: 480, height: 280 },
         }),
       ],
@@ -327,7 +311,7 @@ export async function exportPropertiesDocx(items: Property[], filename = 'inmueb
 
   // Prefetch cover images en paralelo
   const buffers = await Promise.all(
-    items.map(p => p.coverImage ? fetchBuffer(p.coverImage) : Promise.resolve(null))
+    items.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
   )
 
   const sections: (typeof Paragraph.prototype)[] = [
@@ -357,7 +341,7 @@ export async function exportPropertiesDocx(items: Property[], filename = 'inmueb
   URL.revokeObjectURL(url)
 }
 
-async function buildListingSection(l: Listing, coverBuf: ArrayBuffer | null, isLast: boolean) {
+async function buildListingSection(l: Listing, coverBuf: { data: Uint8Array; format: 'JPEG' | 'PNG' } | null, isLast: boolean) {
   const {
     Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
     HeadingLevel, AlignmentType, BorderStyle, WidthType, PageBreak,
@@ -377,8 +361,8 @@ async function buildListingSection(l: Listing, coverBuf: ArrayBuffer | null, isL
       spacing: { after: 150 },
       children: [
         new ImageRun({
-          type: imgType(l.coverImage ?? ''),
-          data: coverBuf,
+          type: coverBuf.format === 'PNG' ? 'png' : 'jpg',
+          data: coverBuf.data,
           transformation: { width: 480, height: 280 },
         }),
       ],
@@ -437,7 +421,7 @@ export async function exportListingsDocx(items: Listing[], filename = 'publicaci
   const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx')
 
   const buffers = await Promise.all(
-    items.map(l => l.coverImage ? fetchBuffer(l.coverImage) : Promise.resolve(null))
+    items.map(l => l.coverImage ? fetchImgData(l.coverImage) : Promise.resolve(null))
   )
 
   const sections: (typeof Paragraph.prototype)[] = [

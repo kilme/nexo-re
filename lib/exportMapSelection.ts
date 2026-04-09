@@ -27,30 +27,14 @@ const label      = () => new Date().toISOString().slice(0, 10)
 
 const proxied = (url: string) => `/api/image-proxy?url=${encodeURIComponent(url)}`
 
-async function fetchBase64(url: string): Promise<string | null> {
+async function fetchImgData(url: string): Promise<{ data: Uint8Array; format: 'JPEG' | 'PNG' } | null> {
   try {
-    const res  = await fetch(proxied(url))
-    const blob = await res.blob()
-    return await new Promise<string>((resolve, reject) => {
-      const r = new FileReader()
-      r.onload  = () => resolve(r.result as string)
-      r.onerror = reject
-      r.readAsDataURL(blob)
-    })
+    const res    = await fetch(proxied(url))
+    const ct     = res.headers.get('content-type') ?? ''
+    const format = ct.includes('png') ? 'PNG' : 'JPEG'
+    const buf    = await res.arrayBuffer()
+    return { data: new Uint8Array(buf), format }
   } catch { return null }
-}
-
-async function fetchBuffer(url: string): Promise<ArrayBuffer | null> {
-  try { return await (await fetch(proxied(url))).arrayBuffer() }
-  catch { return null }
-}
-
-function imgType(url: string): 'jpg' | 'png' | 'gif' | 'bmp' {
-  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
-  if (ext === 'png') return 'png'
-  if (ext === 'gif') return 'gif'
-  if (ext === 'bmp') return 'bmp'
-  return 'jpg'
 }
 
 // ── Excel ─────────────────────────────────────────────────────────────────────
@@ -76,7 +60,7 @@ export async function exportSelectionXlsx(pins: SelectionPin[]) {
 
 export async function exportSelectionPdf(pins: SelectionPin[]) {
   const images = await Promise.all(
-    pins.map(p => p.coverImage ? fetchBase64(p.coverImage) : Promise.resolve(null))
+    pins.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
   )
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -116,13 +100,11 @@ export async function exportSelectionPdf(pins: SelectionPin[]) {
     margin: { left: 8, right: 8 },
     didDrawCell: (data) => {
       if (data.column.index === 0 && data.row.section === 'body') {
-        const b64 = images[data.row.index]
-        if (b64) {
+        const img = images[data.row.index]
+        if (img) {
           try {
-            const fmt2 = b64.startsWith('data:image/png') ? 'PNG' : 'JPEG'
-            doc.addImage(b64, fmt2, data.cell.x + 1, data.cell.y + 1, 30, 20)
-          }
-          catch { /* skip */ }
+            doc.addImage(img.data, img.format, data.cell.x + 1, data.cell.y + 1, 30, 20)
+          } catch { /* skip */ }
         }
       }
     },
@@ -135,7 +117,7 @@ export async function exportSelectionPdf(pins: SelectionPin[]) {
 
 export async function exportSelectionDocx(pins: SelectionPin[]) {
   const buffers = await Promise.all(
-    pins.map(p => p.coverImage ? fetchBuffer(p.coverImage) : Promise.resolve(null))
+    pins.map(p => p.coverImage ? fetchImgData(p.coverImage) : Promise.resolve(null))
   )
 
   const noBorder = { style: BorderStyle.NONE } as const
@@ -179,8 +161,8 @@ export async function exportSelectionDocx(pins: SelectionPin[]) {
         spacing:   { after: 150 },
         children:  [
           new ImageRun({
-            type:           imgType(p.coverImage ?? ''),
-            data:           buf,
+            type:           buf.format === 'PNG' ? 'png' : 'jpg',
+            data:           buf.data,
             transformation: { width: 480, height: 280 },
           }),
         ],
