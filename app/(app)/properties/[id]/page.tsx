@@ -14,16 +14,24 @@ const fmt = (n: number | null | undefined) => n != null ? n.toLocaleString('es-A
 
 async function exportPdf(property: Property) {
   console.log('[exportPdf] start — property.id:', property.id)
-  console.log('[exportPdf] coverImage:', property.coverImage)
-  console.log('[exportPdf] images:', property.images)
   const { default: jsPDF } = await import('jspdf')
-  const coverUrl = property.coverImage ?? property.images?.[0]?.url
-  console.log('[exportPdf] coverUrl resolved:', coverUrl)
-  const img = coverUrl ? await fetchImgData(coverUrl) : null
-  console.log('[exportPdf] img result:', img ? `format=${img.format} bytes=${img.data.byteLength}` : 'null')
+  const allImages = property.images ?? []
+  const coverUrl  = property.coverImage ?? allImages[0]?.url
+  console.log('[exportPdf] coverUrl:', coverUrl, '| total images:', allImages.length)
+
+  // Fetch todas las imágenes en paralelo
+  const imgData = await Promise.all(
+    allImages.map(i => fetchImgData(i.url))
+  )
+  const coverData = coverUrl
+    ? (imgData[allImages.findIndex(i => i.url === coverUrl)] ?? await fetchImgData(coverUrl))
+    : null
+  console.log('[exportPdf] cover loaded:', coverData ? `${coverData.format} ${coverData.data.byteLength}b` : 'null')
 
   const doc  = new jsPDF()
   const blue = [0, 120, 212] as [number, number, number]
+
+  // ── Página 1: header + portada + datos ──
   doc.setFillColor(...blue)
   doc.rect(0, 0, 210, 20, 'F')
   doc.setTextColor(255, 255, 255)
@@ -32,11 +40,11 @@ async function exportPdf(property: Property) {
   doc.setTextColor(0, 0, 0)
 
   let y = 28
-  if (img) {
+  if (coverData) {
     try {
-      doc.addImage(img.data, img.format, 10, y, 190, 90)
-      y += 95
-    } catch { /* skip */ }
+      doc.addImage(coverData.data, coverData.format, 10, y, 190, 85)
+      y += 90
+    } catch (e) { console.warn('[exportPdf] addImage cover error:', e) }
   }
 
   const line = (label: string, value: string) => {
@@ -52,22 +60,61 @@ async function exportPdf(property: Property) {
   line('Dirección:', property.address.formattedAddress ?? `${property.address.street ?? ''}, ${property.address.city ?? ''}`)
   line('Ciudad:', property.address.city ?? '')
   line('Superficie total:', `${fmt(property.totalArea)} m²`)
-  if (property.floors) line('Pisos:', String(property.floors))
-  if (property.yearBuilt) line('Año construcción:', String(property.yearBuilt))
-  if (property.clase) line('Clase:', property.clase)
+  if (property.floors)        line('Pisos:', String(property.floors))
+  if (property.yearBuilt)     line('Año construcción:', String(property.yearBuilt))
+  if (property.clase)         line('Clase:', property.clase)
   if (property.rentPricePerM2) line('Precio alquiler /m²:', `${property.currency ?? 'USD'} ${fmt(property.rentPricePerM2)}`)
-  if (property.salePrice) line('Precio venta total:', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)
+  if (property.salePrice)     line('Precio venta total:', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)
   if (property.description) {
     y += 4
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
-    doc.text('Descripción:', 10, y)
-    y += 6
+    doc.text('Descripción:', 10, y); y += 6
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    const lines = doc.splitTextToSize(property.description, 185)
-    doc.text(lines, 10, y)
+    doc.text(doc.splitTextToSize(property.description, 185), 10, y)
   }
+
+  // ── Páginas de galería: 2 imágenes por fila ──
+  const extraImgs = imgData.filter(Boolean) as { data: Uint8Array; format: 'JPEG' | 'PNG' }[]
+  if (extraImgs.length > 0) {
+    doc.addPage()
+    doc.setFillColor(...blue)
+    doc.rect(0, 0, 210, 14, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(11)
+    doc.text('Galería de imágenes', 10, 10)
+    doc.setTextColor(0, 0, 0)
+
+    const cols = 2
+    const imgW = 90, imgH = 60, marginX = 10, gapX = 10, gapY = 8, startY = 20
+    let row = 0, col = 0, pageY = startY
+
+    extraImgs.forEach((img, idx) => {
+      const x = marginX + col * (imgW + gapX)
+      const curY = pageY + row * (imgH + gapY + 6)
+      if (curY + imgH > 285) {
+        doc.addPage()
+        row = 0; col = 0; pageY = 10
+      }
+      const drawY = pageY + row * (imgH + gapY + 6)
+      try {
+        doc.addImage(img.data, img.format, x, drawY, imgW, imgH)
+        const tipo = allImages[idx]?.tipo ?? ''
+        if (tipo) {
+          doc.setFontSize(7)
+          doc.setFont('helvetica', 'italic')
+          doc.setTextColor(80, 80, 80)
+          doc.text(tipo, x + imgW / 2, drawY + imgH + 4, { align: 'center' })
+          doc.setTextColor(0, 0, 0)
+        }
+      } catch (e) { console.warn('[exportPdf] addImage gallery error idx:', idx, e) }
+
+      col++
+      if (col >= cols) { col = 0; row++ }
+    })
+  }
+
   doc.save(`inmueble-${property.id}.pdf`)
 }
 
@@ -94,13 +141,15 @@ async function exportXlsx(property: Property) {
 
 async function exportDocx(property: Property) {
   console.log('[exportDocx] start — property.id:', property.id)
-  console.log('[exportDocx] coverImage:', property.coverImage)
-  console.log('[exportDocx] images:', property.images)
   const { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType } = await import('docx')
-  const coverUrl = property.coverImage ?? property.images?.[0]?.url
-  console.log('[exportDocx] coverUrl resolved:', coverUrl)
-  const img = coverUrl ? await fetchImgData(coverUrl) : null
-  console.log('[exportDocx] img result:', img ? `format=${img.format} bytes=${img.data.byteLength}` : 'null')
+  const allImages = property.images ?? []
+  const coverUrl  = property.coverImage ?? allImages[0]?.url
+  console.log('[exportDocx] coverUrl:', coverUrl, '| total images:', allImages.length)
+
+  const imgData = await Promise.all(allImages.map(i => fetchImgData(i.url)))
+  const coverData = coverUrl
+    ? (imgData[allImages.findIndex(i => i.url === coverUrl)] ?? await fetchImgData(coverUrl))
+    : null
 
   const field = (label: string, value: string) =>
     new Paragraph({
@@ -111,33 +160,49 @@ async function exportDocx(property: Property) {
       spacing: { after: 100 },
     })
 
-  const children: InstanceType<typeof Paragraph>[] = [
-    new Paragraph({ text: `Inmueble: ${property.name}`, heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({ text: '', spacing: { after: 200 } }),
-    ...(img ? [new Paragraph({
+  const makeImgParagraph = (img: { data: Uint8Array; format: 'JPEG' | 'PNG' }, w = 480, h = 270) =>
+    new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 300 },
+      spacing: { after: 200 },
       children: [new ImageRun({
         type: img.format === 'PNG' ? 'png' : 'jpg',
         data: img.data,
-        transformation: { width: 480, height: 270 },
+        transformation: { width: w, height: h },
       })],
-    })] : []),
+    })
+
+  const galleryImgs = imgData.filter(Boolean) as { data: Uint8Array; format: 'JPEG' | 'PNG' }[]
+
+  const children: InstanceType<typeof Paragraph>[] = [
+    new Paragraph({ text: `Inmueble: ${property.name}`, heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: '', spacing: { after: 200 } }),
+    ...(coverData ? [makeImgParagraph(coverData)] : []),
     field('Tipo', PROP_LABELS[property.type] ?? property.type),
     field('Dirección', property.address.formattedAddress ?? `${property.address.street ?? ''}, ${property.address.city ?? ''}`),
     field('Ciudad', property.address.city ?? ''),
     field('Superficie total', `${fmt(property.totalArea)} m²`),
-    ...(property.floors ? [field('Pisos', String(property.floors))] : []),
-    ...(property.yearBuilt ? [field('Año construcción', String(property.yearBuilt))] : []),
-    ...(property.clase ? [field('Clase', property.clase)] : []),
+    ...(property.floors        ? [field('Pisos', String(property.floors))] : []),
+    ...(property.yearBuilt     ? [field('Año construcción', String(property.yearBuilt))] : []),
+    ...(property.clase         ? [field('Clase', property.clase)] : []),
     ...(property.rentPricePerM2 ? [field('Precio alquiler /m²', `${property.currency ?? 'USD'} ${fmt(property.rentPricePerM2)}`)] : []),
-    ...(property.salePrice ? [field('Precio venta total', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)] : []),
-    ...(property.description ? [
+    ...(property.salePrice     ? [field('Precio venta total', `${property.currency ?? 'USD'} ${fmt(property.salePrice)}`)] : []),
+    ...(property.description   ? [
       new Paragraph({ text: '', spacing: { after: 100 } }),
       new Paragraph({ text: 'Descripción:', heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: property.description, spacing: { after: 200 } }),
+      new Paragraph({ text: property.description, spacing: { after: 300 } }),
+    ] : []),
+    ...(galleryImgs.length > 0 ? [
+      new Paragraph({ text: 'Galería de imágenes', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 200 } } as never),
+      ...galleryImgs.flatMap((img, idx) => {
+        const tipo = allImages[idx]?.tipo
+        return [
+          makeImgParagraph(img, 400, 225),
+          ...(tipo ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: tipo, italics: true, size: 18, color: '605e5c' })] })] : []),
+        ]
+      }),
     ] : []),
   ]
+
   const doc = new Document({ sections: [{ children }] })
   const blob = await Packer.toBlob(doc)
   const url  = URL.createObjectURL(blob)
